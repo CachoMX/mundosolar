@@ -55,7 +55,7 @@ export async function GET() {
         }
       }
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching users:', error)
     return NextResponse.json(
       {
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
       data: newUser
     }, { status: 201 })
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating user:', error)
     return NextResponse.json(
       {

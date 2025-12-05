@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: clients
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching clients:', error)
     return NextResponse.json(
       { success: false, error: 'Error interno del servidor' },
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       data: client,
       message: 'Cliente creado exitosamente'
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating client:', error)
     return NextResponse.json(
       { success: false, error: 'Error interno del servidor' },

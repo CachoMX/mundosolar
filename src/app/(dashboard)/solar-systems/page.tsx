@@ -23,6 +23,7 @@ interface GrowattData {
   totalTodayEnergy: number
   totalEnergy: number
   co2Saved?: number
+  totalCo2Saved?: number
 }
 
 interface ClientSolarSystem {

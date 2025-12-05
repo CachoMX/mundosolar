@@ -37,7 +37,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       success: true,
       data: invoice
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching invoice:', error)
     return NextResponse.json(
       { success: false, error: 'Error interno del servidor' },

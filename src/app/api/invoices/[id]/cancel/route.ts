@@ -66,16 +66,16 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       data: invoice,
       message: 'Factura cancelada exitosamente'
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error canceling invoice:', error)
-    
+
     if (error.code === 'P2025') {
       return NextResponse.json(
         { success: false, error: 'Factura no encontrada' },
         { status: 404 }
       )
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Error interno del servidor' },
       { status: 500 }

@@ -51,7 +51,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       success: true,
       data: client
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching client:', error)
     return NextResponse.json(
       { success: false, error: 'Error interno del servidor' },
@@ -105,16 +105,16 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       data: client,
       message: 'Cliente actualizado exitosamente'
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating client:', error)
-    
+
     if (error.code === 'P2025') {
       return NextResponse.json(
         { success: false, error: 'Cliente no encontrado' },
         { status: 404 }
       )
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Error interno del servidor' },
       { status: 500 }
@@ -140,16 +140,16 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       success: true,
       message: 'Cliente eliminado exitosamente'
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting client:', error)
-    
+
     if (error.code === 'P2025') {
       return NextResponse.json(
         { success: false, error: 'Cliente no encontrado' },
         { status: 404 }
       )
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Error interno del servidor' },
       { status: 500 }

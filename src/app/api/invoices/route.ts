@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: invoices
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching invoices:', error)
     return NextResponse.json(
       { success: false, error: 'Error interno del servidor' },
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
       data: invoice,
       message: 'Factura creada exitosamente'
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating invoice:', error)
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : 'Error interno del servidor' },

@@ -44,7 +44,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       data: invoice,
       message: 'Factura timbrada exitosamente'
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error timbrar invoice:', error)
     
     if (error.code === 'P2025') {

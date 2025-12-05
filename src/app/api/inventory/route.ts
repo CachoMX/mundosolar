@@ -110,7 +110,7 @@ export async function GET() {
         }))
       }
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching inventory data:', error)
     return NextResponse.json(
       {

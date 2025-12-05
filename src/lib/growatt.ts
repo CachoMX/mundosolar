@@ -61,7 +61,7 @@ export class GrowattApi {
 
       if (data.back?.success) {
         this.token = data.back.user.cpowerToken
-        return { success: true, token: this.token }
+        return { success: true, token: this.token || undefined }
       } else {
         return { success: false, message: data.back?.msg || 'Login failed' }
       }

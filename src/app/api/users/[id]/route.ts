@@ -74,7 +74,7 @@ export async function PUT(
       data: updatedUser
     })
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating user:', error)
     return NextResponse.json(
       {
@@ -122,7 +122,7 @@ export async function DELETE(
       message: 'Usuario desactivado exitosamente'
     })
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting user:', error)
     return NextResponse.json(
       {

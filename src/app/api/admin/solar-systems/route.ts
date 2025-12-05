@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
       data: clientsWithGrowatt,
       count: clientsWithGrowatt.length
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching client solar systems:', error)
     return NextResponse.json(
       { success: false, error: 'Error interno del servidor' },
