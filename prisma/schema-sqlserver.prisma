@@ -1,0 +1,522 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+// Authentication and User Management
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          String    @default("USER") // ADMIN, USER, EMPLOYEE, VIEWER
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+  
+  // Employee/Admin fields
+  employeeId    String?   @unique
+  department    String?
+  permissions   Permission[]
+  
+  // System audit
+  createdOrders Order[]
+  createdMaintenanceRecords MaintenanceRecord[]
+
+  @@map("users")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Permission {
+  id     String @id @default(cuid())
+  userId String
+  resource String // 'clients', 'inventory', 'orders', 'maintenance', 'reports'
+  actions  String // 'create,read,update,delete' - comma separated
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, resource])
+}
+
+// Client Management
+model Client {
+  id          String   @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String   @unique
+  phone       String?
+  address     String?
+  city        String?
+  state       String?
+  postalCode  String?
+  notes       String?
+  profileImage String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Mexican Tax/Fiscal Information
+  fiscalData  FiscalData?
+  
+  // Business relationships
+  orders           Order[]
+  maintenanceRecords MaintenanceRecord[]
+  solarSystems     SolarSystem[]
+  growattCredentials GrowattCredentials[]
+
+  @@map("clients")
+}
+
+model FiscalData {
+  id            String @id @default(cuid())
+  clientId      String @unique
+  razonSocial   String
+  rfc           String @unique
+  email         String?
+  telefono      String?
+  calle         String?
+  numero        String?
+  colonia       String?
+  codigoPostal  String?
+  ciudad        String?
+  estado        String?
+  regimenFiscalId String
+  usoCFDIId     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  client        Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  regimenFiscal RegimenFiscal @relation(fields: [regimenFiscalId], references: [id])
+  usoCFDI       UsoCFDI      @relation(fields: [usoCFDIId], references: [id])
+
+  @@map("fiscal_data")
+}
+
+model RegimenFiscal {
+  id          String @id @default(cuid())
+  code        String @unique // SAT Code
+  descripcion String
+  isActive    Boolean @default(true)
+
+  fiscalData FiscalData[]
+  usoCFDIs   UsoCFDI[]
+
+  @@map("regimen_fiscal")
+}
+
+model UsoCFDI {
+  id              String @id @default(cuid())
+  code            String @unique // SAT Code  
+  descripcion     String
+  regimenFiscalId String
+  isActive        Boolean @default(true)
+
+  regimenFiscal RegimenFiscal @relation(fields: [regimenFiscalId], references: [id])
+  fiscalData    FiscalData[]
+
+  @@map("uso_cfdi")
+}
+
+// Inventory Management
+model ProductCategory {
+  id          String @id @default(cuid())
+  name        String @unique // Paneles, Calentadores, Inversores, Refacciones
+  description String?
+  isActive    Boolean @default(true)
+  
+  subCategories ProductSubCategory[]
+  products      Product[]
+
+  @@map("product_categories")
+}
+
+model ProductSubCategory {
+  id         String @id @default(cuid())
+  name       String // Alta Presion, Baja Presion, Aislados, Interconexion, etc.
+  categoryId String
+  isActive   Boolean @default(true)
+  
+  category ProductCategory @relation(fields: [categoryId], references: [id])
+  products Product[]
+
+  @@unique([categoryId, name])
+  @@map("product_sub_categories")
+}
+
+model Location {
+  id       String @id @default(cuid())
+  name     String @unique
+  address  String?
+  isActive Boolean @default(true)
+  
+  inventoryItems InventoryItem[]
+
+  @@map("locations")
+}
+
+model Product {
+  id            String  @id @default(cuid())
+  name          String
+  brand         String?
+  model         String?
+  capacity      String?
+  description   String?
+  unitPrice     Decimal? @db.Decimal(10, 2)
+  categoryId    String
+  subCategoryId String?
+  isActive      Boolean @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  category    ProductCategory     @relation(fields: [categoryId], references: [id])
+  subCategory ProductSubCategory? @relation(fields: [subCategoryId], references: [id])
+  
+  inventoryItems InventoryItem[]
+  orderItems     OrderItem[]
+  solarSystemComponents SolarSystemComponent[]
+
+  @@map("products")
+}
+
+model InventoryItem {
+  id            String   @id @default(cuid())
+  productId     String
+  locationId    String
+  quantity      Int
+  serialNumber  String?
+  invoiceNumber String?
+  purchaseDate  DateTime?
+  supplier      String?
+  unitCost      Decimal?  @db.Decimal(10, 2)
+  totalCost     Decimal?  @db.Decimal(10, 2)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  product  Product  @relation(fields: [productId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+  
+  // Inventory movements
+  movementsOut InventoryMovement[] @relation("MovementFrom")
+  movementsIn  InventoryMovement[] @relation("MovementTo")
+
+  @@unique([productId, locationId, serialNumber])
+  @@map("inventory_items")
+}
+
+model InventoryMovement {
+  id              String            @id @default(cuid())
+  type            String            // PURCHASE, SALE, TRANSFER, ADJUSTMENT, MAINTENANCE, RETURN
+  quantity        Int
+  fromItemId      String?
+  toItemId        String?
+  orderId         String?
+  maintenanceId   String?
+  reason          String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  createdBy       String?
+
+  fromItem     InventoryItem? @relation("MovementFrom", fields: [fromItemId], references: [id])
+  toItem       InventoryItem? @relation("MovementTo", fields: [toItemId], references: [id])
+  order        Order?         @relation(fields: [orderId], references: [id])
+  maintenance  MaintenanceRecord? @relation(fields: [maintenanceId], references: [id])
+
+  @@map("inventory_movements")
+}
+
+// Order Management
+model Order {
+  id            String      @id @default(cuid())
+  orderNumber   String      @unique
+  clientId      String
+  status        String      @default("DRAFT") // DRAFT, CONFIRMED, IN_PROGRESS, SHIPPED, DELIVERED, COMPLETED, CANCELLED
+  orderType     String      @default("SALE") // SALE, INSTALLATION, MAINTENANCE, WARRANTY
+  orderDate     DateTime    @default(now())
+  requiredDate  DateTime?
+  shippingDate  DateTime?
+  completedDate DateTime?
+  
+  // Financial
+  subtotal      Decimal     @db.Decimal(12, 2)
+  taxRate       Decimal     @default(0.16) @db.Decimal(5, 4) // IVA 16%
+  taxAmount     Decimal     @db.Decimal(12, 2)
+  total         Decimal     @db.Decimal(12, 2)
+  
+  // Shipping
+  shippingAddress String?
+  notes          String?
+  
+  // System
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdBy      String?
+
+  client            Client             @relation(fields: [clientId], references: [id])
+  createdByUser     User?              @relation(fields: [createdBy], references: [id])
+  orderItems        OrderItem[]
+  invoice           Invoice?
+  inventoryMovements InventoryMovement[]
+  maintenanceRecords MaintenanceRecord[]
+  solarSystems      SolarSystem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String  @id @default(cuid())
+  orderId    String
+  productId  String
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(10, 2)
+  discount   Decimal @default(0) @db.Decimal(10, 2)
+  totalPrice Decimal @db.Decimal(12, 2)
+  notes      String?
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// Invoice Management (SAT Compliance)
+model Invoice {
+  id              String        @id @default(cuid())
+  invoiceNumber   String        @unique
+  orderId         String        @unique
+  clientId        String
+  
+  // SAT Fields
+  uuid            String?       @unique // UUID del SAT
+  rfcEmisor       String
+  rfcReceptor     String
+  regimenFiscal   String
+  usoCFDI         String
+  metodoPago      String        @default("PUE") // PUE, PPD
+  formaPago       String        @default("03")  // Transferencia
+  
+  // Financial
+  subtotal        Decimal       @db.Decimal(12, 2)
+  iva             Decimal       @db.Decimal(12, 2)
+  total           Decimal       @db.Decimal(12, 2)
+  
+  // Status
+  status          String        @default("PENDING") // PENDING, ISSUED, PAID, CANCELLED, OVERDUE
+  issuedAt        DateTime?
+  cancelledAt     DateTime?
+  
+  // XML/PDF Storage
+  xmlPath         String?
+  pdfPath         String?
+  
+  // System
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  order         Order @relation(fields: [orderId], references: [id])
+  invoiceItems  InvoiceItem[]
+
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  productCode String  // Clave SAT del producto
+  description String
+  unit        String  @default("PZA")
+  quantity    Decimal @db.Decimal(10, 3)
+  unitPrice   Decimal @db.Decimal(10, 2)
+  amount      Decimal @db.Decimal(12, 2)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_items")
+}
+
+// Solar System Management
+model SolarSystem {
+  id               String   @id @default(cuid())
+  systemName       String
+  clientId         String
+  orderId          String?
+  installationDate DateTime?
+  capacity         Decimal? @db.Decimal(8, 2) // kW
+  estimatedGeneration Decimal? @db.Decimal(10, 2) // kWh/year
+  warrantyUntil    DateTime?
+  notes            String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  client             Client              @relation(fields: [clientId], references: [id], onUpdate: NoAction)
+  order              Order?              @relation(fields: [orderId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  components         SolarSystemComponent[]
+  maintenanceRecords MaintenanceRecord[]
+  energyReadings     EnergyReading[]
+
+  @@map("solar_systems")
+}
+
+model SolarSystemComponent {
+  id             String @id @default(cuid())
+  solarSystemId  String
+  productId      String
+  serialNumber   String?
+  quantity       Int
+  installationDate DateTime?
+  warrantyUntil  DateTime?
+  notes          String?
+
+  solarSystem SolarSystem @relation(fields: [solarSystemId], references: [id], onDelete: Cascade)
+  product     Product     @relation(fields: [productId], references: [id])
+
+  @@map("solar_system_components")
+}
+
+// Maintenance Management
+model MaintenanceRecord {
+  id              String            @id @default(cuid())
+  clientId        String
+  solarSystemId   String?
+  orderId         String?
+  maintenanceType String            // PREVENTIVE, CORRECTIVE, WARRANTY, INSPECTION, CLEANING
+  scheduledDate   DateTime
+  completedDate   DateTime?
+  status          String            @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED, RESCHEDULED
+  
+  // Service details
+  description     String?
+  workPerformed   String?
+  partsUsed       String?
+  laborHours      Decimal?          @db.Decimal(5, 2)
+  cost            Decimal?          @db.Decimal(10, 2)
+  
+  // Next maintenance
+  nextScheduledDate DateTime?
+  
+  // System
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String?
+
+  client          Client             @relation(fields: [clientId], references: [id], onUpdate: NoAction)
+  solarSystem     SolarSystem?       @relation(fields: [solarSystemId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  order           Order?             @relation(fields: [orderId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  createdByUser   User?              @relation(fields: [createdBy], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  inventoryMovements InventoryMovement[]
+
+  @@map("maintenance_records")
+}
+
+// Growatt Integration
+model GrowattCredentials {
+  id       String @id @default(cuid())
+  clientId String
+  username String
+  password String // Should be encrypted
+  isActive Boolean @default(true)
+  lastSync DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId])
+  @@map("growatt_credentials")
+}
+
+model EnergyReading {
+  id               String   @id @default(cuid())
+  solarSystemId    String
+  readingDate      DateTime
+  dailyGeneration  Decimal? @db.Decimal(10, 3) // kWh
+  totalGeneration  Decimal? @db.Decimal(12, 3) // kWh
+  currentPower     Decimal? @db.Decimal(8, 3)  // kW
+  co2Saved         Decimal? @db.Decimal(10, 3) // kg
+  revenue          Decimal? @db.Decimal(10, 2) // Mexican Pesos
+  
+  // Weather data (optional)
+  temperature      Decimal? @db.Decimal(5, 2)
+  irradiance       Decimal? @db.Decimal(8, 2)
+  
+  createdAt        DateTime @default(now())
+
+  solarSystem SolarSystem @relation(fields: [solarSystemId], references: [id], onDelete: Cascade)
+
+  @@unique([solarSystemId, readingDate])
+  @@map("energy_readings")
+}
+
+// System Configuration
+model SystemSettings {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+  type  String @default("string") // string, number, boolean, json
+  description String?
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// Audit Log
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String   // CREATE, UPDATE, DELETE, LOGIN, LOGOUT
+  resource  String   // users, clients, orders, etc.
+  resourceId String?
+  oldValues String? // JSON as string
+  newValues String? // JSON as string
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
