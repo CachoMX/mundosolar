@@ -1,6 +1,11 @@
-import { type User, type Role, type OrderStatus, type MaintenanceStatus, type InvoiceStatus } from '@prisma/client'
+import { type User } from '@prisma/client'
 
-export type { User, Role, OrderStatus, MaintenanceStatus, InvoiceStatus }
+export type { User }
+
+// Custom types for status fields (not enums in Prisma schema)
+export type OrderStatus = string
+export type MaintenanceStatus = string
+export type InvoiceStatus = string
 
 export interface ExtendedUser extends User {
   permissions: Permission[]
