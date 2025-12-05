@@ -523,7 +523,8 @@ export default function SolarSystemsPage() {
                 client.clientInfo.expectedDailyGeneration || 0
               )
               if (alert) {
-                counts[alert.level] = (counts[alert.level] || 0) + 1
+                const level = alert.level as 'critical' | 'warning' | 'low'
+                counts[level] = (counts[level] || 0) + 1
                 counts.total++
               }
               return counts
