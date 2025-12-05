@@ -205,6 +205,122 @@ async function main() {
 
   console.log('🛍️ Created sample products')
 
+  // Add inventory items for the products
+  const productsList = await prisma.product.findMany()
+
+  if (productsList.length > 0) {
+    await prisma.inventoryItem.createMany({
+      data: [
+        {
+          productId: productsList[0].id,
+          locationId: mainWarehouse.id,
+          quantity: 250,
+          unitCost: 3200.00,
+          totalCost: 800000.00,
+          supplier: 'Distribuidora Solar SA',
+          purchaseDate: new Date('2024-01-15'),
+        },
+        {
+          productId: productsList[1].id,
+          locationId: mainWarehouse.id,
+          quantity: 120,
+          unitCost: 4000.00,
+          totalCost: 480000.00,
+          supplier: 'Enphase Oficial',
+          purchaseDate: new Date('2024-02-01'),
+        },
+        {
+          productId: productsList[2].id,
+          locationId: secondaryWarehouse.id,
+          quantity: 45,
+          unitCost: 8000.00,
+          totalCost: 360000.00,
+          supplier: 'Cinsa Distribuidora',
+          purchaseDate: new Date('2024-01-20'),
+        },
+        {
+          productId: productsList[0].id,
+          locationId: secondaryWarehouse.id,
+          quantity: 8, // Low stock
+          unitCost: 3200.00,
+          totalCost: 25600.00,
+          supplier: 'Distribuidora Solar SA',
+          purchaseDate: new Date('2024-03-01'),
+          notes: 'Stock bajo - requiere reposición urgente',
+        },
+      ],
+    })
+    console.log('📊 Added inventory items')
+  }
+
+  // Create more clients with Growatt credentials
+  await prisma.client.createMany({
+    data: [
+      {
+        firstName: 'FERNANDO',
+        lastName: 'Rodríguez',
+        email: 'fernando.rodriguez@example.com',
+        phone: '+52 81 2345 6789',
+        address: 'Av. Constitución 567',
+        city: 'Monterrey',
+        state: 'Nuevo León',
+        postalCode: '64000',
+        rfc: 'ROFE850315XXX',
+        growattUsername: 'msgd0w05h',
+        growattPassword: 'demo123',
+        expectedDailyGeneration: 52.5,
+        isActive: true,
+      },
+      {
+        firstName: 'María',
+        lastName: 'González',
+        email: 'maria.gonzalez@example.com',
+        phone: '+52 33 3456 7890',
+        address: 'Calle Libertad 890',
+        city: 'Guadalajara',
+        state: 'Jalisco',
+        postalCode: '44100',
+        rfc: 'GOMA900520XXX',
+        growattUsername: 'msgcdr02',
+        growattPassword: 'demo456',
+        expectedDailyGeneration: 38.7,
+        isActive: true,
+      },
+      {
+        firstName: 'Carlos',
+        lastName: 'Hernández',
+        email: 'carlos.hernandez@example.com',
+        phone: '+52 55 4567 8901',
+        address: 'Paseo de la Reforma 234',
+        city: 'Ciudad de México',
+        state: 'CDMX',
+        postalCode: '06600',
+        rfc: 'HECA880710XXX',
+        growattUsername: 'carlos_solar',
+        growattPassword: 'demo789',
+        expectedDailyGeneration: 65.3,
+        isActive: true,
+      },
+      {
+        firstName: 'Ana',
+        lastName: 'Martínez',
+        email: 'ana.martinez@example.com',
+        phone: '+52 81 5678 9012',
+        address: 'Blvd. Díaz Ordaz 1234',
+        city: 'Monterrey',
+        state: 'Nuevo León',
+        postalCode: '64850',
+        rfc: 'MARA920825XXX',
+        growattUsername: 'ana_energia',
+        growattPassword: 'demo321',
+        expectedDailyGeneration: 42.8,
+        isActive: true,
+      },
+    ],
+  })
+
+  console.log('👥 Created additional clients with Growatt credentials')
+
   // Create permissions for admin
   await prisma.permission.createMany({
     data: [

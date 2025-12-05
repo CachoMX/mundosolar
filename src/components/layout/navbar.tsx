@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useSession, signOut } from 'next-auth/react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -15,13 +15,29 @@ import {
 import { Input } from '@/components/ui/input'
 import { Sun, Search, User, Settings, LogOut, Bell } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { supabase } from '@/lib/supabase'
 
 export function Navbar() {
-  const { data: session } = useSession()
+  const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [userName, setUserName] = useState<string | null>(null)
 
-  const handleSignOut = () => {
-    signOut({ callbackUrl: '/auth/signin' })
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setUserEmail(user.email || null)
+        setUserName(user.user_metadata?.name || user.email || null)
+      }
+    }
+    getUser()
+  }, [])
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
   }
 
   return (
@@ -67,9 +83,9 @@ export function Navbar() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                 <Avatar className="h-10 w-10">
-                  <AvatarImage src={session?.user?.image || ''} alt={session?.user?.name || ''} />
+                  <AvatarImage src="" alt={userName || ''} />
                   <AvatarFallback>
-                    {session?.user?.name
+                    {userName
                       ?.split(' ')
                       .map((n) => n[0])
                       .join('')
@@ -82,21 +98,11 @@ export function Navbar() {
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium leading-none">
-                    {session?.user?.name}
+                    {userName || 'Usuario'}
                   </p>
                   <p className="text-xs leading-none text-muted-foreground">
-                    {session?.user?.email}
+                    {userEmail}
                   </p>
-                  <div className="flex items-center space-x-1 mt-1">
-                    <Badge variant="secondary" className="text-xs">
-                      {session?.user?.role}
-                    </Badge>
-                    {session?.user?.department && (
-                      <Badge variant="outline" className="text-xs">
-                        {session?.user?.department}
-                      </Badge>
-                    )}
-                  </div>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />

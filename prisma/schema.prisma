@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlserver"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -43,6 +43,7 @@ model User {
   name          String?
   email         String    @unique
   emailVerified DateTime?
+  password      String?   // Hashed password for email/password auth
   image         String?
   role          String    @default("USER") // ADMIN, USER, EMPLOYEE, VIEWER
   isActive      Boolean   @default(true)
@@ -51,12 +52,12 @@ model User {
 
   accounts Account[]
   sessions Session[]
-  
+
   // Employee/Admin fields
   employeeId    String?   @unique
   department    String?
   permissions   Permission[]
-  
+
   // System audit
   createdOrders Order[]
   createdMaintenanceRecords MaintenanceRecord[]
