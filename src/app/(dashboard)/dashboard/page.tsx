@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,240 +12,219 @@ import {
   Zap,
   Calendar,
   TrendingUp,
-  TrendingDown,
   Activity,
   Leaf,
-  AlertTriangle
+  AlertTriangle,
+  Loader2,
+  Plus
 } from 'lucide-react'
+import Link from 'next/link'
 
-// Mock data for demonstration
-const stats = [
-  {
-    title: 'Total Clientes',
-    value: '234',
-    change: '+12%',
-    changeType: 'positive' as const,
-    icon: Users,
-    description: 'Desde el mes pasado'
-  },
-  {
-    title: 'Órdenes Activas',
-    value: '18',
-    change: '+23%',
-    changeType: 'positive' as const,
-    icon: ClipboardList,
-    description: 'En proceso'
-  },
-  {
-    title: 'Ingresos del Mes',
-    value: '$145,230',
-    change: '-3%',
-    changeType: 'negative' as const,
-    icon: DollarSign,
-    description: 'Comparado con enero'
-  },
-  {
-    title: 'Energía Generada',
-    value: '2,847 kWh',
-    change: '+8%',
-    changeType: 'positive' as const,
-    icon: Zap,
-    description: 'Este mes'
-  },
-  {
-    title: 'Mantenimientos Pendientes',
-    value: '8',
-    change: '+2',
-    changeType: 'neutral' as const,
-    icon: Calendar,
-    description: 'Programados esta semana'
-  },
-  {
-    title: 'CO₂ Ahorrado',
-    value: '1,423 kg',
-    change: '+15%',
-    changeType: 'positive' as const,
-    icon: Leaf,
-    description: 'Este mes'
-  }
-]
+interface DashboardStats {
+  totalClients: number
+  activeOrders: number
+  monthlyRevenue: number
+  pendingMaintenance: number
+  totalEnergyGenerated: number
+  co2SavedThisMonth: number
+}
 
-const recentOrders = [
-  {
-    id: 'ORD-001',
-    client: 'Juan Pérez',
-    type: 'Instalación',
-    amount: '$45,000',
-    status: 'En Progreso',
-    date: '2024-02-15'
-  },
-  {
-    id: 'ORD-002',
-    client: 'María González',
-    type: 'Mantenimiento',
-    amount: '$3,500',
-    status: 'Completado',
-    date: '2024-02-14'
-  },
-  {
-    id: 'ORD-003',
-    client: 'Carlos Ruiz',
-    type: 'Instalación',
-    amount: '$52,000',
-    status: 'Pendiente',
-    date: '2024-02-13'
-  }
-]
+interface RecentOrder {
+  id: string
+  orderNumber: string
+  client: string
+  total: number
+  status: string
+  createdAt: string
+}
 
-const upcomingMaintenance = [
-  {
-    id: 'MANT-001',
-    client: 'Ana López',
-    system: 'Sistema Residencial 5kW',
-    date: '2024-02-20',
-    type: 'Preventivo'
-  },
-  {
-    id: 'MANT-002',
-    client: 'Roberto Martín',
-    system: 'Sistema Comercial 15kW',
-    date: '2024-02-22',
-    type: 'Inspección'
-  },
-  {
-    id: 'MANT-003',
-    client: 'Sofía Herrera',
-    system: 'Sistema Residencial 8kW',
-    date: '2024-02-25',
-    type: 'Correctivo'
-  }
-]
+interface RecentMaintenance {
+  id: string
+  client: string
+  maintenanceType: string
+  scheduledDate: string
+  status: string
+}
+
+interface DashboardData {
+  stats: DashboardStats
+  recentOrders: RecentOrder[]
+  recentMaintenance: RecentMaintenance[]
+  monthlyTrend: { month: string; revenue: number }[]
+}
 
 export default function DashboardPage() {
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchDashboardData()
+  }, [])
+
+  const fetchDashboardData = async () => {
+    try {
+      const response = await fetch('/api/dashboard/stats')
+      const result = await response.json()
+
+      if (result.success) {
+        setData(result.data)
+      } else {
+        setError(result.error || 'Error al cargar datos')
+      }
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err)
+      setError('Error al conectar con el servidor')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Cargando dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Error al cargar dashboard</h3>
+          <p className="text-sm text-muted-foreground mb-4">{error}</p>
+          <Button onClick={fetchDashboardData}>Reintentar</Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!data) return null
+
+  const stats = [
+    {
+      title: 'Total Clientes',
+      value: data.stats.totalClients.toString(),
+      icon: Users,
+      description: 'Clientes activos',
+      link: '/clients'
+    },
+    {
+      title: 'Órdenes Activas',
+      value: data.stats.activeOrders.toString(),
+      icon: ClipboardList,
+      description: 'En proceso',
+      link: '/orders'
+    },
+    {
+      title: 'Ingresos del Mes',
+      value: `$${data.stats.monthlyRevenue.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`,
+      icon: DollarSign,
+      description: 'Mes actual',
+      link: '/invoices'
+    },
+    {
+      title: 'Energía Generada',
+      value: `${data.stats.totalEnergyGenerated.toLocaleString('es-MX')} kWh`,
+      icon: Zap,
+      description: 'Este mes',
+      link: '/solar-systems'
+    },
+    {
+      title: 'CO₂ Ahorrado',
+      value: `${data.stats.co2SavedThisMonth.toLocaleString('es-MX')} kg`,
+      icon: Leaf,
+      description: 'Este mes',
+      link: '/solar-systems'
+    },
+    {
+      title: 'Mantenimientos',
+      value: data.stats.pendingMaintenance.toString(),
+      icon: Calendar,
+      description: 'Pendientes',
+      link: '/maintenance'
+    }
+  ]
+
+  const getStatusBadge = (status: string) => {
+    const statusMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+      'PENDING': { label: 'Pendiente', variant: 'secondary' },
+      'CONFIRMED': { label: 'Confirmada', variant: 'default' },
+      'IN_PROGRESS': { label: 'En Proceso', variant: 'default' },
+      'COMPLETED': { label: 'Completada', variant: 'outline' },
+      'CANCELLED': { label: 'Cancelada', variant: 'destructive' },
+      'SCHEDULED': { label: 'Programado', variant: 'default' }
+    }
+
+    const statusInfo = statusMap[status] || { label: status, variant: 'outline' }
+    return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+  }
+
   return (
     <div className="space-y-6">
       {/* Welcome Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            ¡Bienvenido, {"Usuario"}!
+            Dashboard
           </h1>
           <p className="text-muted-foreground mt-1">
-            Aquí tienes un resumen de tu sistema solar
+            Resumen de tu sistema de gestión solar
           </p>
         </div>
-        <div className="flex items-center space-x-2">
-          <Badge variant="outline" className="text-sm">
-            {new Date().toLocaleDateString('es-MX', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}
-          </Badge>
+        <div className="flex gap-2">
+          <Link href="/clients/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo Cliente
+            </Button>
+          </Link>
+          <Link href="/orders/new">
+            <Button variant="outline">
+              <Plus className="mr-2 h-4 w-4" />
+              Nueva Orden
+            </Button>
+          </Link>
         </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {stats.map((stat, index) => {
           const Icon = stat.icon
           return (
-            <Card key={index}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  {stat.title}
-                </CardTitle>
-                <Icon className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <div className="flex items-center space-x-1 text-xs text-muted-foreground">
-                  {stat.changeType === 'positive' && (
-                    <TrendingUp className="h-3 w-3 text-green-500" />
-                  )}
-                  {stat.changeType === 'negative' && (
-                    <TrendingDown className="h-3 w-3 text-red-500" />
-                  )}
-                  {stat.changeType === 'neutral' && (
-                    <Activity className="h-3 w-3 text-gray-500" />
-                  )}
-                  <span className={
-                    stat.changeType === 'positive' 
-                      ? 'text-green-600' 
-                      : stat.changeType === 'negative' 
-                        ? 'text-red-600' 
-                        : 'text-gray-600'
-                  }>
-                    {stat.change}
-                  </span>
-                  <span>{stat.description}</span>
-                </div>
-              </CardContent>
-            </Card>
+            <Link key={index} href={stat.link}>
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    {stat.title}
+                  </CardTitle>
+                  <Icon className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stat.value}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {stat.description}
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
           )
         })}
       </div>
 
-      {/* Main Content Tabs */}
-      <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="overview">Resumen</TabsTrigger>
-          <TabsTrigger value="orders">Órdenes</TabsTrigger>
-          <TabsTrigger value="maintenance">Mantenimiento</TabsTrigger>
-          <TabsTrigger value="energy">Energía</TabsTrigger>
+      {/* Tabs for Recent Activity */}
+      <Tabs defaultValue="orders" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="orders">Órdenes Recientes</TabsTrigger>
+          <TabsTrigger value="maintenance">Mantenimientos</TabsTrigger>
+          <TabsTrigger value="revenue">Ingresos</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-            {/* Revenue Chart Placeholder */}
-            <Card className="col-span-4">
-              <CardHeader>
-                <CardTitle>Ingresos Mensuales</CardTitle>
-                <CardDescription>
-                  Comparación de ingresos de los últimos 6 meses
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pl-2">
-                <div className="h-[300px] flex items-center justify-center bg-gray-50 rounded">
-                  <div className="text-center">
-                    <TrendingUp className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-600">Gráfico de ingresos</p>
-                    <p className="text-xs text-gray-400">Se integrarán próximamente</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Quick Actions */}
-            <Card className="col-span-3">
-              <CardHeader>
-                <CardTitle>Acciones Rápidas</CardTitle>
-                <CardDescription>
-                  Funciones más utilizadas
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button className="w-full justify-start" variant="outline">
-                  <Users className="mr-2 h-4 w-4" />
-                  Agregar Cliente
-                </Button>
-                <Button className="w-full justify-start" variant="outline">
-                  <ClipboardList className="mr-2 h-4 w-4" />
-                  Nueva Orden
-                </Button>
-                <Button className="w-full justify-start" variant="outline">
-                  <Calendar className="mr-2 h-4 w-4" />
-                  Programar Mantenimiento
-                </Button>
-                <Button className="w-full justify-start" variant="outline">
-                  <Zap className="mr-2 h-4 w-4" />
-                  Ver Sistemas Solares
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
 
         <TabsContent value="orders" className="space-y-4">
           <Card>
@@ -255,32 +235,38 @@ export default function DashboardPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {recentOrders.map((order) => (
-                  <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      <div>
-                        <p className="font-medium">{order.client}</p>
-                        <p className="text-sm text-muted-foreground">{order.id} • {order.type}</p>
+              {data.recentOrders.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <ClipboardList className="mx-auto h-12 w-12 mb-4 text-gray-300" />
+                  <p>No hay órdenes registradas</p>
+                  <Link href="/orders/new">
+                    <Button className="mt-4" variant="outline">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Crear Primera Orden
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {data.recentOrders.map((order) => (
+                    <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <p className="font-medium">{order.orderNumber}</p>
+                          {getStatusBadge(order.status)}
+                        </div>
+                        <p className="text-sm text-muted-foreground">{order.client}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold">${order.total.toLocaleString('es-MX')}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(order.createdAt).toLocaleDateString('es-MX')}
+                        </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium">{order.amount}</p>
-                      <div className="flex items-center space-x-2">
-                        <Badge variant={
-                          order.status === 'Completado' ? 'default' :
-                          order.status === 'En Progreso' ? 'secondary' :
-                          'outline'
-                        }>
-                          {order.status}
-                        </Badge>
-                        <span className="text-sm text-muted-foreground">{order.date}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -288,104 +274,77 @@ export default function DashboardPage() {
         <TabsContent value="maintenance" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Próximos Mantenimientos</CardTitle>
+              <CardTitle>Mantenimientos Programados</CardTitle>
               <CardDescription>
-                Mantenimientos programados para esta semana
+                Próximos mantenimientos de sistemas solares
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {upcomingMaintenance.map((maintenance) => (
-                  <div key={maintenance.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                      <div>
-                        <p className="font-medium">{maintenance.client}</p>
-                        <p className="text-sm text-muted-foreground">{maintenance.system}</p>
+              {data.recentMaintenance.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Calendar className="mx-auto h-12 w-12 mb-4 text-gray-300" />
+                  <p>No hay mantenimientos programados</p>
+                  <Link href="/maintenance/new">
+                    <Button className="mt-4" variant="outline">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Programar Mantenimiento
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {data.recentMaintenance.map((maintenance) => (
+                    <div key={maintenance.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <p className="font-medium">{maintenance.client}</p>
+                          {getStatusBadge(maintenance.status)}
+                        </div>
+                        <p className="text-sm text-muted-foreground">{maintenance.maintenanceType}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium">
+                          {new Date(maintenance.scheduledDate).toLocaleDateString('es-MX')}
+                        </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium">{maintenance.date}</p>
-                      <Badge variant="outline" className="text-sm">
-                        {maintenance.type}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="energy" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            {/* Energy Generation Chart */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Generación de Energía</CardTitle>
-                <CardDescription>
-                  Generación diaria de los últimos 7 días
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[200px] flex items-center justify-center bg-gray-50 rounded">
-                  <div className="text-center">
-                    <Zap className="h-8 w-8 text-yellow-500 mx-auto mb-2" />
-                    <p className="text-sm text-gray-600">Gráfico de generación</p>
-                  </div>
+        <TabsContent value="revenue" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Tendencia de Ingresos</CardTitle>
+              <CardDescription>
+                Ingresos de los últimos 6 meses
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {data.monthlyTrend.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Activity className="mx-auto h-12 w-12 mb-4 text-gray-300" />
+                  <p>No hay datos de ingresos disponibles</p>
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Environmental Impact */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Impacto Ambiental</CardTitle>
-                <CardDescription>
-                  Beneficios ambientales este mes
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">CO₂ Ahorrado</span>
-                  <span className="font-medium">1,423 kg</span>
+              ) : (
+                <div className="space-y-2">
+                  {data.monthlyTrend.map((month, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 border rounded">
+                      <span className="font-medium capitalize">{month.month}</span>
+                      <span className="text-lg font-bold">
+                        ${month.revenue.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Árboles Equivalentes</span>
-                  <span className="font-medium">18 árboles</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Dinero Ahorrado</span>
-                  <span className="font-medium">$8,947</span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Alerts/Notifications */}
-      <Card className="border-orange-200 bg-orange-50">
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <AlertTriangle className="h-5 w-5 text-orange-600" />
-            <span>Alertas y Notificaciones</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <p className="text-sm">
-              • 3 mantenimientos programados para esta semana
-            </p>
-            <p className="text-sm">
-              • 2 facturas pendientes de envío
-            </p>
-            <p className="text-sm">
-              • Inventario bajo en inversores (5 unidades restantes)
-            </p>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }
