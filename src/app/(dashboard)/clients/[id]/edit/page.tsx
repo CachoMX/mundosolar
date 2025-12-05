@@ -153,7 +153,7 @@ export default function EditClientPage() {
     }
   }
 
-  const handleInputChange = (field: keyof ClientFormData, value: string | boolean) => {
+  const handleInputChange = (field: keyof ClientFormData, value: string | boolean | number) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
