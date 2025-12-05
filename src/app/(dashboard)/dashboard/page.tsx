@@ -1,6 +1,5 @@
 'use client'
 
-import { useSession } from 'next-auth/react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -122,15 +121,13 @@ const upcomingMaintenance = [
 ]
 
 export default function DashboardPage() {
-  const { data: session } = useSession()
-
   return (
     <div className="space-y-6">
       {/* Welcome Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            ¡Bienvenido, {session?.user?.name?.split(' ')[0]}!
+            ¡Bienvenido, {"Usuario"}!
           </h1>
           <p className="text-muted-foreground mt-1">
             Aquí tienes un resumen de tu sistema solar

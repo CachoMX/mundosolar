@@ -1,23 +1,27 @@
 'use client'
 
-import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Loader2, Sun } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 export default function Home() {
-  const { data: session, status } = useSession()
   const router = useRouter()
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (status === 'loading') return // Still loading
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
 
-    if (session) {
-      router.push('/dashboard')
-    } else {
-      router.push('/auth/signin')
+      if (session) {
+        router.push('/dashboard')
+      } else {
+        router.push('/login')
+      }
     }
-  }, [session, status, router])
+
+    checkSession()
+  }, [router])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
