@@ -9,8 +9,23 @@ import { Label } from '@/components/ui/label'
 import { ArrowLeft, Zap, MessageSquare, FileText, CheckCircle, XCircle, Settings, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
+type IntegrationConfig = {
+  [key: string]: string | undefined
+}
+
+type Integration = {
+  id: string
+  name: string
+  description: string
+  icon: typeof Zap
+  status: string
+  config: IntegrationConfig
+  isEditing: boolean
+  isTesting: boolean
+}
+
 export default function IntegrationsPage() {
-  const [integrations, setIntegrations] = useState([
+  const [integrations, setIntegrations] = useState<Integration[]>([
     {
       id: 'growatt',
       name: 'Growatt Solar',
@@ -82,7 +97,7 @@ export default function IntegrationsPage() {
   }
 
   // Save configurations to localStorage
-  const saveConfigurations = (updatedIntegrations: typeof integrations) => {
+  const saveConfigurations = (updatedIntegrations: Integration[]) => {
     const configsToSave = updatedIntegrations.reduce((acc, integration) => {
       acc[integration.id] = {
         status: integration.status,
