@@ -1,15 +1,116 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Settings, User, Building, Bell, Shield, Database } from 'lucide-react'
+import { Settings, User, Building, Bell, Shield, Database, Loader2, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
+interface SettingsData {
+  userStats: {
+    total: number
+    active: number
+    admins: number
+    employees: number
+    regularUsers: number
+  }
+  modulesActive: number
+  companySettings: {
+    name: string
+    rfc: string
+    currency: string
+    currencyName: string
+    ivaRate: number
+    timezone: string
+    timezoneDisplay: string
+    language: string
+  }
+  systemInfo: {
+    lastBackup: string
+    backupEnabled: boolean
+    emailNotifications: boolean
+  }
+}
+
 export default function SettingsPage() {
+  const [data, setData] = useState<SettingsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchSettings()
+  }, [])
+
+  const fetchSettings = async () => {
+    try {
+      const response = await fetch('/api/settings')
+      const result = await response.json()
+
+      if (result.success) {
+        setData(result.data)
+      } else {
+        setError(result.error || 'Error al cargar configuración')
+      }
+    } catch (err) {
+      console.error('Error fetching settings:', err)
+      setError('Error al conectar con el servidor')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const formatBackupDate = (isoDate: string) => {
+    const date = new Date(isoDate)
+    const today = new Date()
+    const isToday = date.toDateString() === today.toDateString()
+
+    if (isToday) {
+      return {
+        label: 'Hoy',
+        time: date.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+      }
+    }
+
+    return {
+      label: date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }),
+      time: date.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Cargando configuración...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Error al cargar configuración</h3>
+          <p className="text-sm text-muted-foreground mb-4">{error}</p>
+          <Button onClick={fetchSettings}>Reintentar</Button>
+        </div>
+      </div>
+    )
+  }
+
+  const backupInfo = data?.systemInfo.lastBackup
+    ? formatBackupDate(data.systemInfo.lastBackup)
+    : { label: 'N/A', time: '' }
+
   return (
     <div className="flex-1 space-y-4 p-4 pt-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Configuración</h2>
       </div>
-      
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -17,9 +118,9 @@ export default function SettingsPage() {
             <User className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12</div>
+            <div className="text-2xl font-bold">{data?.userStats.active || 0}</div>
             <p className="text-xs text-muted-foreground">
-              Con acceso al sistema
+              De {data?.userStats.total || 0} usuarios en total
             </p>
           </CardContent>
         </Card>
@@ -29,7 +130,7 @@ export default function SettingsPage() {
             <Settings className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">9</div>
+            <div className="text-2xl font-bold">{data?.modulesActive || 0}</div>
             <p className="text-xs text-muted-foreground">
               Funcionalidades habilitadas
             </p>
@@ -41,9 +142,9 @@ export default function SettingsPage() {
             <Database className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">Hoy</div>
+            <div className="text-2xl font-bold">{backupInfo.label}</div>
             <p className="text-xs text-muted-foreground">
-              02:00 AM
+              {backupInfo.time}
             </p>
           </CardContent>
         </Card>
@@ -58,19 +159,21 @@ export default function SettingsPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Nombre de la Empresa</label>
-              <div className="text-sm text-muted-foreground">MundoSolar</div>
+              <div className="text-sm text-muted-foreground">{data?.companySettings.name || 'No configurado'}</div>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">RFC</label>
-              <div className="text-sm text-muted-foreground">MSO123456XXX</div>
+              <div className="text-sm text-muted-foreground">{data?.companySettings.rfc || 'No configurado'}</div>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Moneda por Defecto</label>
-              <div className="text-sm text-muted-foreground">MXN (Peso Mexicano)</div>
+              <div className="text-sm text-muted-foreground">
+                {data?.companySettings.currency} ({data?.companySettings.currencyName})
+              </div>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">IVA por Defecto</label>
-              <div className="text-sm text-muted-foreground">16%</div>
+              <div className="text-sm text-muted-foreground">{data?.companySettings.ivaRate || 16}%</div>
             </div>
             <Button>
               <Building className="mr-2 h-4 w-4" />
@@ -87,19 +190,23 @@ export default function SettingsPage() {
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Notificaciones por Email</span>
-              <Button variant="outline" size="sm">Configurar</Button>
+              <Button variant="outline" size="sm">
+                {data?.systemInfo.emailNotifications ? 'Activado' : 'Desactivado'}
+              </Button>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Backup Automático</span>
-              <Button variant="outline" size="sm">Activado</Button>
+              <Button variant="outline" size="sm">
+                {data?.systemInfo.backupEnabled ? 'Activado' : 'Desactivado'}
+              </Button>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Zona Horaria</span>
-              <Button variant="outline" size="sm">GMT-6</Button>
+              <Button variant="outline" size="sm">{data?.companySettings.timezoneDisplay || 'GMT-6'}</Button>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Idioma</span>
-              <Button variant="outline" size="sm">Español</Button>
+              <Button variant="outline" size="sm">{data?.companySettings.language || 'Español'}</Button>
             </div>
           </CardContent>
         </Card>

@@ -1,66 +1,64 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Shield, User, Settings, Eye, Edit, Trash2, Plus } from 'lucide-react'
+import { ArrowLeft, Shield, User, Settings, Eye, Edit, Trash2, Plus, Loader2, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
+interface RolePermission {
+  role: string
+  permissions: string[]
+  description: string
+}
+
+interface ModulePermission {
+  module: string
+  roles: RolePermission[]
+}
+
+interface PermissionsData {
+  stats: {
+    activeRoles: number
+    modulesWithPermissions: number
+    uniquePermissions: number
+  }
+  roleCount: {
+    ADMIN: number
+    EMPLOYEE: number
+    USER: number
+    VIEWER: number
+  }
+  permissionMatrix: ModulePermission[]
+}
+
 export default function PermissionsPage() {
-  const permissions = [
-    {
-      module: 'Clientes',
-      role: 'ADMIN',
-      permissions: ['crear', 'leer', 'actualizar', 'eliminar'],
-      description: 'Control total sobre gestión de clientes'
-    },
-    {
-      module: 'Clientes',
-      role: 'EMPLOYEE',
-      permissions: ['leer', 'actualizar'],
-      description: 'Visualización y edición de clientes existentes'
-    },
-    {
-      module: 'Clientes',
-      role: 'USER',
-      permissions: ['leer'],
-      description: 'Solo visualización de información de clientes'
-    },
-    {
-      module: 'Inventario',
-      role: 'ADMIN',
-      permissions: ['crear', 'leer', 'actualizar', 'eliminar'],
-      description: 'Control total del inventario'
-    },
-    {
-      module: 'Inventario',
-      role: 'EMPLOYEE',
-      permissions: ['leer', 'actualizar'],
-      description: 'Consulta y actualización de stock'
-    },
-    {
-      module: 'Facturación',
-      role: 'ADMIN',
-      permissions: ['crear', 'leer', 'actualizar', 'eliminar'],
-      description: 'Control total de facturación y SAT'
-    },
-    {
-      module: 'Facturación',
-      role: 'EMPLOYEE',
-      permissions: ['crear', 'leer'],
-      description: 'Creación y consulta de facturas'
-    },
-    {
-      module: 'Reportes',
-      role: 'ADMIN',
-      permissions: ['leer', 'exportar'],
-      description: 'Acceso completo a reportes y exportación'
-    },
-    {
-      module: 'Reportes',
-      role: 'EMPLOYEE',
-      permissions: ['leer'],
-      description: 'Consulta de reportes operativos'
+  const [data, setData] = useState<PermissionsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchPermissions()
+  }, [])
+
+  const fetchPermissions = async () => {
+    try {
+      const response = await fetch('/api/settings/permissions')
+      const result = await response.json()
+
+      if (result.success) {
+        setData(result.data)
+      } else {
+        setError(result.error || 'Error al cargar permisos')
+      }
+    } catch (err) {
+      console.error('Error fetching permissions:', err)
+      setError('Error al conectar con el servidor')
+    } finally {
+      setLoading(false)
     }
-  ]
+  }
 
   const getPermissionColor = (permission: string) => {
     switch (permission) {
@@ -82,6 +80,30 @@ export default function PermissionsPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Cargando permisos...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Error al cargar permisos</h3>
+          <p className="text-sm text-muted-foreground mb-4">{error}</p>
+          <Button onClick={fetchPermissions}>Reintentar</Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex-1 space-y-4 p-4 pt-6">
       <div className="flex items-center justify-between">
@@ -99,7 +121,7 @@ export default function PermissionsPage() {
           Nuevo Rol
         </Button>
       </div>
-      
+
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -107,7 +129,7 @@ export default function PermissionsPage() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">4</div>
+            <div className="text-2xl font-bold">{data?.stats.activeRoles || 0}</div>
             <p className="text-xs text-muted-foreground">
               Configurados en el sistema
             </p>
@@ -119,7 +141,7 @@ export default function PermissionsPage() {
             <Settings className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">6</div>
+            <div className="text-2xl font-bold">{data?.stats.modulesWithPermissions || 0}</div>
             <p className="text-xs text-muted-foreground">
               Con permisos configurados
             </p>
@@ -131,7 +153,7 @@ export default function PermissionsPage() {
             <Eye className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">5</div>
+            <div className="text-2xl font-bold">{data?.stats.uniquePermissions || 0}</div>
             <p className="text-xs text-muted-foreground">
               Tipos de acceso disponibles
             </p>
@@ -148,44 +170,46 @@ export default function PermissionsPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {['Clientes', 'Inventario', 'Facturación', 'Reportes'].map((module) => {
-              const modulePermissions = permissions.filter(p => p.module === module)
-              
-              return (
-                <div key={module} className="space-y-3">
-                  <h3 className="font-semibold text-lg">{module}</h3>
-                  <div className="space-y-2">
-                    {modulePermissions.map((permission, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex items-center space-x-3">
-                          <Badge className={getRoleColor(permission.role)}>
-                            {permission.role}
-                          </Badge>
-                          <div>
-                            <div className="font-medium">{permission.description}</div>
-                            <div className="flex space-x-1 mt-1">
-                              {permission.permissions.map((perm) => (
+            {data?.permissionMatrix.map((moduleData) => (
+              <div key={moduleData.module} className="space-y-3">
+                <h3 className="font-semibold text-lg">{moduleData.module}</h3>
+                <div className="space-y-2">
+                  {moduleData.roles.map((roleData, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <Badge className={getRoleColor(roleData.role)}>
+                          {roleData.role}
+                        </Badge>
+                        <div>
+                          <div className="font-medium">{roleData.description}</div>
+                          <div className="flex space-x-1 mt-1">
+                            {roleData.permissions.length > 0 ? (
+                              roleData.permissions.map((perm) => (
                                 <Badge key={perm} variant="outline" className={`text-xs ${getPermissionColor(perm)}`}>
                                   {perm}
                                 </Badge>
-                              ))}
-                            </div>
+                              ))
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-gray-400">
+                                Sin acceso
+                              </Badge>
+                            )}
                           </div>
                         </div>
-                        <div className="flex space-x-2">
-                          <Button variant="outline" size="sm">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="outline" size="sm">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
                       </div>
-                    ))}
-                  </div>
+                      <div className="flex space-x-2">
+                        <Button variant="outline" size="sm">
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="outline" size="sm">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )
-            })}
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -232,28 +256,40 @@ export default function PermissionsPage() {
                   <div className="font-medium">ADMIN</div>
                   <div className="text-sm text-muted-foreground">Administrador del sistema</div>
                 </div>
-                <Badge className="bg-red-500">Todos los permisos</Badge>
+                <div className="flex items-center space-x-2">
+                  <Badge className="bg-red-500">Todos los permisos</Badge>
+                  <span className="text-sm text-muted-foreground">({data?.roleCount.ADMIN || 0} usuarios)</span>
+                </div>
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-medium">EMPLOYEE</div>
                   <div className="text-sm text-muted-foreground">Personal técnico</div>
                 </div>
-                <Badge className="bg-blue-500">Permisos operativos</Badge>
+                <div className="flex items-center space-x-2">
+                  <Badge className="bg-blue-500">Permisos operativos</Badge>
+                  <span className="text-sm text-muted-foreground">({data?.roleCount.EMPLOYEE || 0} usuarios)</span>
+                </div>
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-medium">USER</div>
                   <div className="text-sm text-muted-foreground">Usuario estándar</div>
                 </div>
-                <Badge className="bg-green-500">Solo lectura</Badge>
+                <div className="flex items-center space-x-2">
+                  <Badge className="bg-green-500">Solo lectura</Badge>
+                  <span className="text-sm text-muted-foreground">({data?.roleCount.USER || 0} usuarios)</span>
+                </div>
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-medium">VIEWER</div>
                   <div className="text-sm text-muted-foreground">Solo visualización</div>
                 </div>
-                <Badge variant="outline">Consulta únicamente</Badge>
+                <div className="flex items-center space-x-2">
+                  <Badge variant="outline">Consulta únicamente</Badge>
+                  <span className="text-sm text-muted-foreground">({data?.roleCount.VIEWER || 0} usuarios)</span>
+                </div>
               </div>
             </div>
           </CardContent>

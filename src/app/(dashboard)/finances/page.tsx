@@ -1,41 +1,184 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { DollarSign, TrendingUp, TrendingDown, CreditCard, Wallet } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import {
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  CreditCard,
+  Wallet,
+  Loader2,
+  AlertTriangle,
+  FileText,
+  ArrowUpRight,
+  ArrowDownRight
+} from 'lucide-react'
+
+interface FinanceSummary {
+  monthlyRevenue: number
+  lastMonthRevenue: number
+  totalRevenue: number
+  monthlyExpenses: number
+  netProfit: number
+  profitMargin: number
+  accountsReceivable: number
+  paidThisMonth: number
+  inventoryValue: number
+}
+
+interface PendingInvoice {
+  id: string
+  invoiceNumber: string
+  client: string
+  total: number
+  status: string
+  createdAt: string
+}
+
+interface Transaction {
+  id: string
+  orderNumber: string
+  client: string
+  total: number
+  status: string
+  date: string
+}
+
+interface MonthlyTrend {
+  month: string
+  revenue: number
+}
 
 export default function FinancesPage() {
+  const [summary, setSummary] = useState<FinanceSummary | null>(null)
+  const [pendingInvoices, setPendingInvoices] = useState<PendingInvoice[]>([])
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([])
+  const [monthlyTrend, setMonthlyTrend] = useState<MonthlyTrend[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchFinances()
+  }, [])
+
+  const fetchFinances = async () => {
+    try {
+      const response = await fetch('/api/finances')
+      const result = await response.json()
+
+      if (result.success) {
+        setSummary(result.data.summary)
+        setPendingInvoices(result.data.pendingInvoices)
+        setRecentTransactions(result.data.recentTransactions)
+        setMonthlyTrend(result.data.monthlyTrend)
+      } else {
+        setError(result.error || 'Error al cargar datos financieros')
+      }
+    } catch (err) {
+      console.error('Error fetching finances:', err)
+      setError('Error al conectar con el servidor')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('es-MX', {
+      style: 'currency',
+      currency: 'MXN',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(value)
+  }
+
+  const getRevenueChange = () => {
+    if (!summary || summary.lastMonthRevenue === 0) return 0
+    return ((summary.monthlyRevenue - summary.lastMonthRevenue) / summary.lastMonthRevenue) * 100
+  }
+
+  const getStatusBadge = (status: string) => {
+    const config: Record<string, { label: string; className: string }> = {
+      'PENDING': { label: 'Pendiente', className: 'bg-yellow-100 text-yellow-800' },
+      'ISSUED': { label: 'Emitida', className: 'bg-blue-100 text-blue-800' },
+      'OVERDUE': { label: 'Vencida', className: 'bg-red-100 text-red-800' },
+      'PAID': { label: 'Pagada', className: 'bg-green-100 text-green-800' },
+      'COMPLETED': { label: 'Completada', className: 'bg-green-100 text-green-800' },
+      'DELIVERED': { label: 'Entregada', className: 'bg-blue-100 text-blue-800' },
+      'CONFIRMED': { label: 'Confirmada', className: 'bg-purple-100 text-purple-800' }
+    }
+    const statusConfig = config[status] || { label: status, className: '' }
+    return <Badge variant="outline" className={statusConfig.className}>{statusConfig.label}</Badge>
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Cargando datos financieros...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Error al cargar datos</h3>
+          <p className="text-sm text-muted-foreground mb-4">{error}</p>
+          <Button onClick={fetchFinances}>Reintentar</Button>
+        </div>
+      </div>
+    )
+  }
+
+  const revenueChange = getRevenueChange()
+
   return (
     <div className="flex-1 space-y-4 p-4 pt-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Finanzas</h2>
-        <Button>
-          <DollarSign className="mr-2 h-4 w-4" />
-          Nuevo Movimiento
-        </Button>
       </div>
-      
+
+      {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ingresos</CardTitle>
+            <CardTitle className="text-sm font-medium">Ingresos del Mes</CardTitle>
             <TrendingUp className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">$3,247,890</div>
-            <p className="text-xs text-muted-foreground">
-              Este mes
-            </p>
+            <div className="text-2xl font-bold text-green-500">
+              {formatCurrency(summary?.monthlyRevenue || 0)}
+            </div>
+            <div className="flex items-center text-xs text-muted-foreground">
+              {revenueChange >= 0 ? (
+                <ArrowUpRight className="h-3 w-3 text-green-500 mr-1" />
+              ) : (
+                <ArrowDownRight className="h-3 w-3 text-red-500 mr-1" />
+              )}
+              <span className={revenueChange >= 0 ? 'text-green-500' : 'text-red-500'}>
+                {Math.abs(revenueChange).toFixed(1)}%
+              </span>
+              <span className="ml-1">vs mes anterior</span>
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Egresos</CardTitle>
+            <CardTitle className="text-sm font-medium">Gastos del Mes</CardTitle>
             <TrendingDown className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-500">$2,124,560</div>
-            <p className="text-xs text-muted-foreground">
-              Este mes
-            </p>
+            <div className="text-2xl font-bold text-red-500">
+              {formatCurrency(summary?.monthlyExpenses || 0)}
+            </div>
+            <p className="text-xs text-muted-foreground">Mantenimientos y operación</p>
           </CardContent>
         </Card>
         <Card>
@@ -44,165 +187,153 @@ export default function FinancesPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$1,123,330</div>
+            <div className={`text-2xl font-bold ${(summary?.netProfit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatCurrency(summary?.netProfit || 0)}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Margen 34.6%
+              Margen: {summary?.profitMargin || 0}%
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Flujo de Caja</CardTitle>
+            <CardTitle className="text-sm font-medium">Por Cobrar</CardTitle>
             <Wallet className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-500">$847,250</div>
-            <p className="text-xs text-muted-foreground">
-              Disponible
-            </p>
+            <div className="text-2xl font-bold text-blue-500">
+              {formatCurrency(summary?.accountsReceivable || 0)}
+            </div>
+            <p className="text-xs text-muted-foreground">Facturas pendientes</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Cuentas por Cobrar</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">Vencimiento 0-30 días</span>
-                <span className="text-muted-foreground">$234,567</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium">Vencimiento 31-60 días</span>
-                <span className="text-yellow-500">$89,123</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium">Vencimiento 61-90 días</span>
-                <span className="text-orange-500">$34,567</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium">Más de 90 días</span>
-                <span className="text-red-500">$12,345</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Cuentas por Pagar</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">Proveedores</span>
-                <span className="text-muted-foreground">$156,789</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium">Servicios</span>
-                <span className="text-muted-foreground">$45,234</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium">Impuestos</span>
-                <span className="text-yellow-500">$87,654</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium">Nómina</span>
-                <span className="text-muted-foreground">$123,456</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
+      {/* Secondary Stats */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
-          <CardHeader>
-            <CardTitle>Estados Financieros</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Histórico</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <Button variant="outline" className="w-full justify-start">
-                Balance General
-              </Button>
-              <Button variant="outline" className="w-full justify-start">
-                Estado de Resultados
-              </Button>
-              <Button variant="outline" className="w-full justify-start">
-                Flujo de Efectivo
-              </Button>
-            </div>
+            <div className="text-xl font-bold">{formatCurrency(summary?.totalRevenue || 0)}</div>
+            <p className="text-xs text-muted-foreground">Ingresos totales</p>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader>
-            <CardTitle>Análisis Financiero</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Cobrado Este Mes</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <Button variant="outline" className="w-full justify-start">
-                Ratios Financieros
-              </Button>
-              <Button variant="outline" className="w-full justify-start">
-                Análisis de Tendencias
-              </Button>
-              <Button variant="outline" className="w-full justify-start">
-                Proyecciones
-              </Button>
-            </div>
+            <div className="text-xl font-bold text-green-600">{formatCurrency(summary?.paidThisMonth || 0)}</div>
+            <p className="text-xs text-muted-foreground">Facturas pagadas</p>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader>
-            <CardTitle>Herramientas</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Valor Inventario</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <Button variant="outline" className="w-full justify-start">
-                <CreditCard className="mr-2 h-4 w-4" />
-                Conciliación Bancaria
-              </Button>
-              <Button variant="outline" className="w-full justify-start">
-                <DollarSign className="mr-2 h-4 w-4" />
-                Control de Presupuesto
-              </Button>
-              <Button variant="outline" className="w-full justify-start">
-                <Wallet className="mr-2 h-4 w-4" />
-                Centro de Costos
-              </Button>
-            </div>
+            <div className="text-xl font-bold">{formatCurrency(summary?.inventoryValue || 0)}</div>
+            <p className="text-xs text-muted-foreground">Stock actual</p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Monthly Trend */}
       <Card>
         <CardHeader>
-          <CardTitle>Control Financiero</CardTitle>
-          <CardDescription>
-            Gestión integral de finanzas empresariales
-          </CardDescription>
+          <CardTitle>Tendencia de Ingresos (6 meses)</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-muted-foreground">
-            <DollarSign className="mx-auto h-12 w-12 mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Módulo Financiero</h3>
-            <p>Características del sistema:</p>
-            <ul className="list-disc list-inside mt-2 space-y-1">
-              <li>Control de ingresos y egresos en tiempo real</li>
-              <li>Conciliación bancaria automatizada</li>
-              <li>Gestión de cuentas por cobrar y pagar</li>
-              <li>Análisis de rentabilidad por proyecto</li>
-              <li>Reportes financieros automáticos</li>
-              <li>Integración con sistema contable</li>
-            </ul>
+          <div className="flex items-end justify-between h-32 gap-2">
+            {monthlyTrend.map((month, index) => {
+              const maxRevenue = Math.max(...monthlyTrend.map(m => m.revenue), 1)
+              const height = (month.revenue / maxRevenue) * 100
+              return (
+                <div key={index} className="flex flex-col items-center flex-1">
+                  <div
+                    className="w-full bg-blue-500 rounded-t transition-all"
+                    style={{ height: `${Math.max(height, 5)}%` }}
+                  />
+                  <span className="text-xs mt-2 text-muted-foreground">{month.month}</span>
+                  <span className="text-xs font-medium">
+                    {formatCurrency(month.revenue)}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         </CardContent>
       </Card>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Pending Invoices */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <FileText className="mr-2 h-5 w-5" />
+              Facturas Pendientes
+            </CardTitle>
+            <CardDescription>Cuentas por cobrar</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {pendingInvoices.length === 0 ? (
+              <div className="text-center py-4 text-muted-foreground">
+                <p>No hay facturas pendientes</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {pendingInvoices.slice(0, 5).map((invoice) => (
+                  <div key={invoice.id} className="flex items-center justify-between p-2 border rounded">
+                    <div>
+                      <p className="font-medium text-sm">{invoice.invoiceNumber}</p>
+                      <p className="text-xs text-muted-foreground">{invoice.client}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold">{formatCurrency(invoice.total)}</p>
+                      {getStatusBadge(invoice.status)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent Transactions */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <CreditCard className="mr-2 h-5 w-5" />
+              Transacciones Recientes
+            </CardTitle>
+            <CardDescription>Últimas operaciones</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {recentTransactions.length === 0 ? (
+              <div className="text-center py-4 text-muted-foreground">
+                <p>No hay transacciones recientes</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentTransactions.slice(0, 5).map((tx) => (
+                  <div key={tx.id} className="flex items-center justify-between p-2 border rounded">
+                    <div>
+                      <p className="font-medium text-sm">{tx.orderNumber}</p>
+                      <p className="text-xs text-muted-foreground">{tx.client}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-green-600">{formatCurrency(tx.total)}</p>
+                      {getStatusBadge(tx.status)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

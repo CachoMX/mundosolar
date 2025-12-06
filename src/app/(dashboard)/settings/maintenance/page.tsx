@@ -1,41 +1,105 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Database, Settings, Bell, HardDrive, Trash2, Download, RefreshCw, Activity, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Database, Settings, Bell, HardDrive, Trash2, Download, RefreshCw, Activity, AlertTriangle, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
-export default function MaintenancePage() {
-  const systemStatus = [
-    { service: 'Base de Datos', status: 'online', lastCheck: '2 min ago', uptime: '99.9%' },
-    { service: 'API Growatt', status: 'online', lastCheck: '5 min ago', uptime: '98.7%' },
-    { service: 'WhatsApp Business', status: 'offline', lastCheck: '1 hora ago', uptime: '95.2%' },
-    { service: 'PAC Facturación', status: 'online', lastCheck: '3 min ago', uptime: '99.1%' },
-    { service: 'Servidor Web', status: 'online', lastCheck: '1 min ago', uptime: '99.8%' }
-  ]
+interface SystemService {
+  service: string
+  status: string
+  lastCheck: string
+  uptime: string
+  details: string
+}
 
-  const backupHistory = [
-    { date: '2024-08-28', time: '02:00 AM', size: '2.3 GB', status: 'success', type: 'Automático' },
-    { date: '2024-08-27', time: '02:00 AM', size: '2.2 GB', status: 'success', type: 'Automático' },
-    { date: '2024-08-26', time: '02:00 AM', size: '2.1 GB', status: 'success', type: 'Automático' },
-    { date: '2024-08-25', time: '03:15 PM', size: '2.1 GB', status: 'success', type: 'Manual' },
-    { date: '2024-08-25', time: '02:00 AM', size: '2.0 GB', status: 'failed', type: 'Automático' }
-  ]
+interface BackupRecord {
+  date: string
+  time: string
+  size: string
+  status: string
+  type: string
+}
 
-  const systemLogs = [
-    { time: '14:23:15', level: 'INFO', message: 'Usuario admin@mundosolar.com inició sesión', module: 'AUTH' },
-    { time: '14:20:32', level: 'WARN', message: 'API Growatt respondió lentamente (>5s)', module: 'INTEGRATIONS' },
-    { time: '14:15:08', level: 'INFO', message: 'Backup automático completado exitosamente', module: 'BACKUP' },
-    { time: '14:10:45', level: 'ERROR', message: 'Fallo en conexión WhatsApp Business', module: 'INTEGRATIONS' },
-    { time: '14:05:12', level: 'INFO', message: 'Nueva orden creada #ORD-2024-0892', module: 'ORDERS' }
-  ]
+interface SystemLog {
+  time: string
+  level: string
+  message: string
+  module: string
+}
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'online': return 'text-green-500'
-      case 'offline': return 'text-red-500'
-      case 'warning': return 'text-yellow-500'
-      default: return 'text-gray-500'
+interface MaintenanceData {
+  stats: {
+    generalStatus: string
+    activeServices: number
+    totalServices: number
+    lastBackup: BackupRecord
+    diskUsage: {
+      used: number
+      total: number
+      percentage: number
     }
+    errorsToday: number
+  }
+  systemStatus: SystemService[]
+  backupHistory: BackupRecord[]
+  systemLogs: SystemLog[]
+  databaseStats: {
+    clients: number
+    orders: number
+    products: number
+    invoices: number
+    maintenance: number
+    solarSystems: number
+    users: number
+    total: number
+  }
+}
+
+export default function MaintenancePage() {
+  const [data, setData] = useState<MaintenanceData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  useEffect(() => {
+    fetchMaintenanceData()
+  }, [])
+
+  const fetchMaintenanceData = async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true)
+    try {
+      const response = await fetch('/api/settings/maintenance')
+      const result = await response.json()
+
+      if (result.success) {
+        setData(result.data)
+        setError(null)
+      } else {
+        setError(result.error || 'Error al cargar información del sistema')
+      }
+    } catch (err) {
+      console.error('Error fetching maintenance data:', err)
+      setError('Error al conectar con el servidor')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }
+
+  const formatLastCheck = (isoDate: string) => {
+    const date = new Date(isoDate)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+
+    if (diffMins < 1) return 'Ahora'
+    if (diffMins < 60) return `${diffMins} min ago`
+    const diffHours = Math.floor(diffMins / 60)
+    if (diffHours < 24) return `${diffHours} hora${diffHours > 1 ? 's' : ''} ago`
+    return date.toLocaleDateString('es-MX')
   }
 
   const getStatusBadge = (status: string) => {
@@ -56,6 +120,30 @@ export default function MaintenancePage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Cargando información del sistema...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Error al cargar información</h3>
+          <p className="text-sm text-muted-foreground mb-4">{error}</p>
+          <Button onClick={() => fetchMaintenanceData()}>Reintentar</Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex-1 space-y-4 p-4 pt-6">
       <div className="flex items-center justify-between">
@@ -69,8 +157,8 @@ export default function MaintenancePage() {
           <h2 className="text-3xl font-bold tracking-tight">Mantenimiento del Sistema</h2>
         </div>
         <div className="flex space-x-2">
-          <Button variant="outline">
-            <RefreshCw className="mr-2 h-4 w-4" />
+          <Button variant="outline" onClick={() => fetchMaintenanceData(true)} disabled={refreshing}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             Actualizar Estado
           </Button>
           <Button>
@@ -79,17 +167,19 @@ export default function MaintenancePage() {
           </Button>
         </div>
       </div>
-      
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Estado General</CardTitle>
-            <Activity className="h-4 w-4 text-green-500" />
+            <Activity className={`h-4 w-4 ${data?.stats.generalStatus === 'Operativo' ? 'text-green-500' : 'text-yellow-500'}`} />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">Operativo</div>
+            <div className={`text-2xl font-bold ${data?.stats.generalStatus === 'Operativo' ? 'text-green-500' : 'text-yellow-500'}`}>
+              {data?.stats.generalStatus}
+            </div>
             <p className="text-xs text-muted-foreground">
-              4/5 servicios activos
+              {data?.stats.activeServices}/{data?.stats.totalServices} servicios activos
             </p>
           </CardContent>
         </Card>
@@ -99,9 +189,11 @@ export default function MaintenancePage() {
             <Database className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">Hoy</div>
+            <div className="text-2xl font-bold">
+              {data?.stats.lastBackup.date === new Date().toISOString().split('T')[0] ? 'Hoy' : data?.stats.lastBackup.date}
+            </div>
             <p className="text-xs text-muted-foreground">
-              02:00 AM - 2.3 GB
+              {data?.stats.lastBackup.time} - {data?.stats.lastBackup.size}
             </p>
           </CardContent>
         </Card>
@@ -111,21 +203,23 @@ export default function MaintenancePage() {
             <HardDrive className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">78%</div>
+            <div className="text-2xl font-bold">{data?.stats.diskUsage.percentage}%</div>
             <p className="text-xs text-muted-foreground">
-              156 GB de 200 GB usados
+              {data?.stats.diskUsage.used} GB de {data?.stats.diskUsage.total} GB usados
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Errores Hoy</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-red-500" />
+            <AlertTriangle className={`h-4 w-4 ${(data?.stats.errorsToday || 0) > 0 ? 'text-red-500' : 'text-green-500'}`} />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-500">3</div>
+            <div className={`text-2xl font-bold ${(data?.stats.errorsToday || 0) > 0 ? 'text-red-500' : 'text-green-500'}`}>
+              {data?.stats.errorsToday || 0}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Requieren atención
+              {(data?.stats.errorsToday || 0) > 0 ? 'Requieren atención' : 'Sin errores'}
             </p>
           </CardContent>
         </Card>
@@ -139,16 +233,17 @@ export default function MaintenancePage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {systemStatus.map((service, index) => (
+              {data?.systemStatus.map((service, index) => (
                 <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
                   <div>
                     <div className="font-medium">{service.service}</div>
                     <div className="text-xs text-muted-foreground">
-                      Último check: {service.lastCheck} • Uptime: {service.uptime}
+                      Último check: {formatLastCheck(service.lastCheck)} • Uptime: {service.uptime}
                     </div>
+                    <div className="text-xs text-muted-foreground mt-1">{service.details}</div>
                   </div>
-                  <Badge className={service.status === 'online' ? 'bg-green-500' : 'bg-red-500'}>
-                    {service.status === 'online' ? 'En Línea' : 'Fuera de Línea'}
+                  <Badge className={service.status === 'online' ? 'bg-green-500' : service.status === 'pending' ? 'bg-yellow-500' : 'bg-red-500'}>
+                    {service.status === 'online' ? 'En Línea' : service.status === 'pending' ? 'Pendiente' : 'Fuera de Línea'}
                   </Badge>
                 </div>
               ))}
@@ -187,6 +282,46 @@ export default function MaintenancePage() {
         </Card>
       </div>
 
+      {/* Database Stats */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Estadísticas de Base de Datos</CardTitle>
+          <CardDescription>Registros almacenados por módulo</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-7">
+            <div className="text-center p-3 border rounded-lg">
+              <div className="text-2xl font-bold">{data?.databaseStats.clients || 0}</div>
+              <div className="text-xs text-muted-foreground">Clientes</div>
+            </div>
+            <div className="text-center p-3 border rounded-lg">
+              <div className="text-2xl font-bold">{data?.databaseStats.orders || 0}</div>
+              <div className="text-xs text-muted-foreground">Órdenes</div>
+            </div>
+            <div className="text-center p-3 border rounded-lg">
+              <div className="text-2xl font-bold">{data?.databaseStats.products || 0}</div>
+              <div className="text-xs text-muted-foreground">Productos</div>
+            </div>
+            <div className="text-center p-3 border rounded-lg">
+              <div className="text-2xl font-bold">{data?.databaseStats.invoices || 0}</div>
+              <div className="text-xs text-muted-foreground">Facturas</div>
+            </div>
+            <div className="text-center p-3 border rounded-lg">
+              <div className="text-2xl font-bold">{data?.databaseStats.maintenance || 0}</div>
+              <div className="text-xs text-muted-foreground">Mantenimientos</div>
+            </div>
+            <div className="text-center p-3 border rounded-lg">
+              <div className="text-2xl font-bold">{data?.databaseStats.solarSystems || 0}</div>
+              <div className="text-xs text-muted-foreground">Sistemas Solares</div>
+            </div>
+            <div className="text-center p-3 border rounded-lg">
+              <div className="text-2xl font-bold">{data?.databaseStats.users || 0}</div>
+              <div className="text-xs text-muted-foreground">Usuarios</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Historial de Backups</CardTitle>
@@ -196,7 +331,7 @@ export default function MaintenancePage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {backupHistory.map((backup, index) => (
+            {data?.backupHistory.map((backup, index) => (
               <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
                 <div>
                   <div className="font-medium">{backup.date} - {backup.time}</div>
@@ -228,20 +363,26 @@ export default function MaintenancePage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {systemLogs.map((log, index) => (
-              <div key={index} className="flex items-start space-x-3 p-2 text-sm">
-                <span className="text-muted-foreground font-mono">{log.time}</span>
-                <Badge variant="outline" className={`text-xs ${getLogLevelColor(log.level)}`}>
-                  {log.level}
-                </Badge>
-                <span className="flex-1">{log.message}</span>
-                <Badge variant="outline" className="text-xs">
-                  {log.module}
-                </Badge>
-              </div>
-            ))}
-          </div>
+          {data?.systemLogs && data.systemLogs.length > 0 ? (
+            <div className="space-y-2">
+              {data.systemLogs.map((log, index) => (
+                <div key={index} className="flex items-start space-x-3 p-2 text-sm">
+                  <span className="text-muted-foreground font-mono">{log.time}</span>
+                  <Badge variant="outline" className={`text-xs ${getLogLevelColor(log.level)}`}>
+                    {log.level}
+                  </Badge>
+                  <span className="flex-1">{log.message}</span>
+                  <Badge variant="outline" className="text-xs">
+                    {log.module}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-4 text-muted-foreground">
+              No hay actividad reciente registrada
+            </div>
+          )}
           <div className="mt-4 flex justify-center">
             <Button variant="outline">
               <Bell className="mr-2 h-4 w-4" />
