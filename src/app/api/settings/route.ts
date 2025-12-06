@@ -31,7 +31,7 @@ export async function GET() {
       prisma.order.count(),
       prisma.product.count({ where: { isActive: true } }),
       prisma.invoice.count(),
-      prisma.maintenance.count(),
+      prisma.maintenanceRecord.count(),
       prisma.solarSystem.count({ where: { isActive: true } })
     ])
 

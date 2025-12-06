@@ -18,7 +18,7 @@ export async function GET() {
       prisma.order.count(),
       prisma.product.count(),
       prisma.invoice.count(),
-      prisma.maintenance.count(),
+      prisma.maintenanceRecord.count(),
       prisma.solarSystem.count(),
       prisma.user.count()
     ])
