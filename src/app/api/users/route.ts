@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/db'
 import { createClient } from '@supabase/supabase-js'
 
-const prisma = new PrismaClient()
+// Helper function to get Supabase admin client (lazy initialization)
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-// Supabase admin client (server-side only with service role key)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Supabase environment variables not configured')
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
     }
-  }
-)
+  })
+}
 
 // GET - Fetch all users
 export async function GET() {
@@ -64,8 +67,6 @@ export async function GET() {
       },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -100,6 +101,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Get Supabase admin client
+    const supabaseAdmin = getSupabaseAdmin()
 
     // Create user in Supabase Auth first
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -163,7 +167,5 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }

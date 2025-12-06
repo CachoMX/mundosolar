@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, Sun, AlertCircle } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
@@ -51,13 +52,17 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
-            <div className="bg-yellow-400 p-4 rounded-full">
-              <Sun className="h-12 w-12 text-yellow-900" />
-            </div>
+            <Image
+              src="/assets/logos/logo.svg"
+              alt="MundoSolar Logo"
+              width={280}
+              height={100}
+              priority
+              className="h-auto"
+            />
           </div>
           <div className="text-center">
-            <CardTitle className="text-2xl font-bold">MundoSolar</CardTitle>
-            <CardDescription>Sistema de Gestión Solar</CardDescription>
+            <CardDescription className="text-base">Sistema de Gestión Solar</CardDescription>
           </div>
         </CardHeader>
         <CardContent>

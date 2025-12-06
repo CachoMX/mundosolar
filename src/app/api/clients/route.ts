@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { prisma } from '@/lib/db'
 
 // GET /api/clients - Fetch all clients
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession()
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     const clients = await prisma.client.findMany({
       orderBy: {
         createdAt: 'desc'
@@ -34,13 +26,28 @@ export async function GET(request: NextRequest) {
 // POST /api/clients - Create new client
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession()
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const data = await request.json()
+
+    // Validate required fields
+    if (!data.email) {
+      return NextResponse.json(
+        { success: false, error: 'Email es requerido' },
+        { status: 400 }
+      )
     }
 
-    const data = await request.json()
-    
+    // Check if email already exists
+    const existingClient = await prisma.client.findUnique({
+      where: { email: data.email }
+    })
+
+    if (existingClient) {
+      return NextResponse.json(
+        { success: false, error: 'Ya existe un cliente con este email' },
+        { status: 400 }
+      )
+    }
+
     // Create client in database
     const client = await prisma.client.create({
       data: {
@@ -48,11 +55,11 @@ export async function POST(request: NextRequest) {
         lastName: data.type === 'business' ? '' : (data.lastName || ''),
         email: data.email,
         phone: data.phone || null,
-        address: data.address || null,
+        address: data.street || data.address || null,
         neighborhood: data.neighborhood || null,
         city: data.city || null,
         state: data.state || null,
-        postalCode: data.postalCode || null,
+        postalCode: data.zipCode || data.postalCode || null,
         rfc: data.rfc || null,
         curp: data.curp || null,
         regimenFiscal: data.regimenFiscal || null,
