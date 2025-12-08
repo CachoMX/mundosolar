@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-growatt-data",
+      "schedule": "0 22 * * *"
+    }
+  ]
+}

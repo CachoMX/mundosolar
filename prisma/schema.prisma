@@ -492,17 +492,58 @@ model EnergyReading {
   currentPower     Decimal? @db.Decimal(8, 3)  // kW
   co2Saved         Decimal? @db.Decimal(10, 3) // kg
   revenue          Decimal? @db.Decimal(10, 2) // Mexican Pesos
-  
+
   // Weather data (optional)
   temperature      Decimal? @db.Decimal(5, 2)
   irradiance       Decimal? @db.Decimal(8, 2)
-  
+
   createdAt        DateTime @default(now())
 
   solarSystem SolarSystem @relation(fields: [solarSystemId], references: [id], onDelete: Cascade)
 
   @@unique([solarSystemId, readingDate])
   @@map("energy_readings")
+}
+
+// Cached Growatt Data for faster dashboard loading
+model GrowattDataCache {
+  id               String   @id @default(cuid())
+  clientId         String
+  plantName        String?
+  plantId          String?
+
+  // Energy data
+  dailyGeneration  Decimal? @db.Decimal(10, 3) // kWh today
+  monthlyGeneration Decimal? @db.Decimal(12, 3) // kWh this month
+  yearlyGeneration Decimal? @db.Decimal(12, 3) // kWh this year
+  totalGeneration  Decimal? @db.Decimal(12, 3) // kWh lifetime
+  currentPower     Decimal? @db.Decimal(8, 3)  // kW current power
+
+  // Additional metrics
+  co2Reduction     Decimal? @db.Decimal(10, 3) // kg CO2
+  revenue          Decimal? @db.Decimal(10, 2) // Mexican Pesos
+
+  // Status
+  status           String?  // online, offline, error
+  lastUpdateFromGrowatt DateTime?
+
+  // Cache metadata
+  cachedAt         DateTime @default(now())
+  expiresAt        DateTime
+  isStale          Boolean  @default(false)
+
+  // Error tracking
+  fetchError       String?
+  errorCount       Int      @default(0)
+  lastErrorAt      DateTime?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([clientId])
+  @@index([expiresAt])
+  @@index([isStale])
+  @@map("growatt_data_cache")
 }
 
 // System Configuration

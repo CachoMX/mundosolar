@@ -51,12 +51,13 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
-            <div className="bg-yellow-400 p-4 rounded-full">
-              <Sun className="h-12 w-12 text-yellow-900" />
-            </div>
+            <img
+              src="/assets/logos/logo.svg"
+              alt="MundoSolar Logo"
+              className="h-16 w-auto"
+            />
           </div>
           <div className="text-center">
-            <CardTitle className="text-2xl font-bold">MundoSolar</CardTitle>
             <CardDescription>Sistema de Gestión Solar</CardDescription>
           </div>
         </CardHeader>
