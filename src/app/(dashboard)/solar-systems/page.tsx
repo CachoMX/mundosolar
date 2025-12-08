@@ -279,9 +279,13 @@ export default function SolarSystemsPage() {
   }
 
   useEffect(() => {
-    fetchGrowattData()
+    // Only fetch personal system data on "Mi Sistema" tab
+    if (activeTab === 'mi-sistema') {
+      fetchGrowattData()
+    }
+    // Always fetch client systems for admin view
     fetchAllClientSystems()
-  }, [])
+  }, [activeTab])
 
   const handleRefresh = () => {
     if (activeTab === 'mi-sistema') {
@@ -294,9 +298,9 @@ export default function SolarSystemsPage() {
   // Function to determine alert level based on generation performance
   const getAlertLevel = (actualGeneration: number, expectedGeneration: number) => {
     if (!expectedGeneration || expectedGeneration <= 0) return null
-    
+
     const performanceRatio = actualGeneration / expectedGeneration
-    
+
     if (performanceRatio < 0.3) {
       return {
         level: 'critical',
@@ -331,49 +335,8 @@ export default function SolarSystemsPage() {
         priority: 3
       }
     }
-    
+
     return null // No alert needed
-  }
-
-  if (loading) {
-    return (
-      <div className="flex-1 space-y-4 p-4 pt-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-            <p className="text-sm text-muted-foreground">Cargando datos de Growatt...</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex-1 space-y-4 p-4 pt-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold tracking-tight">Sistemas Solares</h2>
-          <Button onClick={handleRefresh}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Reintentar
-          </Button>
-        </div>
-        
-        <Card>
-          <CardContent className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Error al cargar datos</h3>
-              <p className="text-sm text-muted-foreground mb-4">{error}</p>
-              <Button onClick={handleRefresh} variant="outline">
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Reintentar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
   }
 
   return (
@@ -381,8 +344,8 @@ export default function SolarSystemsPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Sistemas Solares</h2>
         <div className="flex space-x-2">
-          <Button variant="outline" onClick={handleRefresh} disabled={refreshing || clientsLoading}>
-            {(refreshing || clientsLoading) ? (
+          <Button variant="outline" onClick={handleRefresh} disabled={(activeTab === 'mi-sistema' ? refreshing : clientsLoading)}>
+            {(activeTab === 'mi-sistema' ? refreshing : clientsLoading) ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
@@ -403,6 +366,29 @@ export default function SolarSystemsPage() {
         </TabsList>
 
         <TabsContent value="mi-sistema" className="space-y-4">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+                <p className="text-sm text-muted-foreground">Cargando datos de Growatt...</p>
+              </div>
+            </div>
+          ) : error ? (
+            <Card>
+              <CardContent className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <Settings className="h-12 w-12 text-orange-500 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">Configuración de Growatt Requerida</h3>
+                  <p className="text-sm text-muted-foreground mb-4">{error}</p>
+                  <Button onClick={() => window.location.href = '/integrations'}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Configurar Integración
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
       
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -513,6 +499,8 @@ export default function SolarSystemsPage() {
           )}
         </CardContent>
       </Card>
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="todos-sistemas" className="space-y-4">
