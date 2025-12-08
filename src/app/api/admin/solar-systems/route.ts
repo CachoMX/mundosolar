@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
@@ -8,7 +9,29 @@ const prisma = new PrismaClient()
 export async function GET(request: NextRequest) {
   try {
     console.log('🔧 Admin solar systems API called')
-    const session = await getServerSession()
+
+    // Create Supabase client for server-side authentication
+    const cookieStore = cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            // Not needed for GET requests
+          },
+          remove(name: string, options: CookieOptions) {
+            // Not needed for GET requests
+          },
+        },
+      }
+    )
+
+    const { data: { session } } = await supabase.auth.getSession()
+
     if (!session) {
       console.log('❌ No session found')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
