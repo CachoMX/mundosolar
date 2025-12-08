@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { prisma } from '@/lib/prisma'
+import { createClient } from '@/lib/supabase/server'
 
 // GET /api/invoices - Fetch all invoices
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession()
-    if (!session) {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -42,8 +42,10 @@ export async function GET(request: NextRequest) {
 // POST /api/invoices - Create new invoice
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession()
-    if (!session) {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
