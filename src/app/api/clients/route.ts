@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { prisma } from '@/lib/prisma'
+import { createClient } from '@/lib/supabase/server'
 
 // GET /api/clients - Fetch all clients
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession()
-    if (!session) {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -34,8 +34,10 @@ export async function GET(request: NextRequest) {
 // POST /api/clients - Create new client
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession()
-    if (!session) {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
