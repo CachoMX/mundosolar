@@ -229,20 +229,22 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Get all clients with Growatt credentials
-    const clientsWithCredentials = await prisma.growattCredentials.findMany({
-      where: { isActive: true },
+    // Get all clients with Growatt credentials from the clients table
+    const clientsWithCredentials = await prisma.client.findMany({
+      where: {
+        AND: [
+          { growattUsername: { not: null } },
+          { growattPassword: { not: null } },
+          { isActive: true },
+        ]
+      },
       select: {
-        clientId: true,
-        username: true,
-        password: true,
-        client: {
-          select: {
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        growattUsername: true,
+        growattPassword: true,
       },
     })
 
@@ -256,45 +258,45 @@ export async function GET(request: NextRequest) {
     }
 
     // Process each client sequentially to avoid rate limiting
-    for (const credential of clientsWithCredentials) {
+    for (const client of clientsWithCredentials) {
       try {
-        console.log(`[Cron] Fetching data for client ${credential.clientId}`)
+        console.log(`[Cron] Fetching data for client ${client.id}`)
 
         const data = await fetchGrowattDataForClient(
-          credential.clientId,
-          credential.username,
-          credential.password
+          client.id,
+          client.growattUsername!,
+          client.growattPassword!
         )
 
         if (data) {
-          await cacheGrowattData(credential.clientId, data)
+          await cacheGrowattData(client.id, data)
           results.success++
-          console.log(`[Cron] ✓ Successfully cached data for client ${credential.clientId}`)
+          console.log(`[Cron] ✓ Successfully cached data for client ${client.id}`)
         } else {
           await cacheGrowattData(
-            credential.clientId,
+            client.id,
             null,
             'Failed to fetch data from Growatt API'
           )
           results.failed++
           results.errors.push({
-            clientId: credential.clientId,
+            clientId: client.id,
             error: 'Failed to fetch data from Growatt API',
           })
-          console.log(`[Cron] ✗ Failed to fetch data for client ${credential.clientId}`)
+          console.log(`[Cron] ✗ Failed to fetch data for client ${client.id}`)
         }
 
         // Add a small delay between requests to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 2000))
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        await cacheGrowattData(credential.clientId, null, errorMessage)
+        await cacheGrowattData(client.id, null, errorMessage)
         results.failed++
         results.errors.push({
-          clientId: credential.clientId,
+          clientId: client.id,
           error: errorMessage,
         })
-        console.error(`[Cron] Error processing client ${credential.clientId}:`, error)
+        console.error(`[Cron] Error processing client ${client.id}:`, error)
       }
     }
 
