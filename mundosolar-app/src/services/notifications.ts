@@ -1,7 +1,5 @@
 import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import { Platform } from 'react-native';
-import { pushAPI } from './api';
 
 // Configure notification behavior
 Notifications.setNotificationHandler({
@@ -13,45 +11,10 @@ Notifications.setNotificationHandler({
 });
 
 export const registerForPushNotificationsAsync = async () => {
-  let token;
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#3b82f6',
-    });
-  }
-
-  if (Device.isDevice) {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    if (finalStatus !== 'granted') {
-      alert('No se pudo obtener el token de notificaciones push!');
-      return;
-    }
-
-    token = (await Notifications.getExpoPushTokenAsync()).data;
-    console.log('Push token:', token);
-
-    // Subscribe to push notifications on backend
-    try {
-      await pushAPI.subscribe({ token, platform: Platform.OS });
-    } catch (error) {
-      console.error('Error subscribing to push notifications:', error);
-    }
-  } else {
-    alert('Debes usar un dispositivo físico para push notifications');
-  }
-
-  return token;
+  // Note: Push notifications require a development build, not Expo Go
+  // This function is kept for compatibility but won't work in Expo Go
+  console.log('Push notifications require a development build');
+  return null;
 };
 
 export const scheduleMaintenanceReminder = async (
