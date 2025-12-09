@@ -47,7 +47,7 @@
       "eas": {
         "projectId": "mundosolar-app"
       },
-      "apiUrl": "http://192.168.1.81:3000"
+      "apiUrl": "https://mundosolar.vercel.app"
     }
   }
 }
