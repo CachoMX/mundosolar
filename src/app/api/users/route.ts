@@ -38,8 +38,9 @@ export async function GET() {
 
     // Get count by role
     const adminCount = users.filter(u => u.role === 'ADMIN').length
-    const employeeCount = users.filter(u => u.role === 'EMPLOYEE').length
-    const userCount = users.filter(u => u.role === 'USER').length
+    const managerCount = users.filter(u => u.role === 'MANAGER').length
+    const technicianCount = users.filter(u => u.role === 'TECHNICIAN').length
+    const clientCount = users.filter(u => u.role === 'CLIENT').length
     const activeCount = users.filter(u => u.isActive).length
 
     return NextResponse.json({
@@ -50,8 +51,9 @@ export async function GET() {
           total: users.length,
           active: activeCount,
           admins: adminCount,
-          employees: employeeCount,
-          regularUsers: userCount
+          managers: managerCount,
+          technicians: technicianCount,
+          clients: clientCount
         }
       }
     })

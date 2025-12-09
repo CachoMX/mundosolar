@@ -42,7 +42,7 @@ export async function GET() {
     const pendingMaintenance = await prisma.maintenanceRecord.count({
       where: {
         status: {
-          in: ['PENDING', 'SCHEDULED']
+          in: ['PENDING_APPROVAL', 'SCHEDULED']
         }
       }
     })
@@ -157,7 +157,7 @@ export async function GET() {
         recentMaintenance: recentMaintenance.map(maintenance => ({
           id: maintenance.id,
           client: `${maintenance.client.firstName} ${maintenance.client.lastName}`,
-          maintenanceType: maintenance.maintenanceType,
+          maintenanceType: maintenance.type,
           scheduledDate: maintenance.scheduledDate,
           status: maintenance.status
         })),

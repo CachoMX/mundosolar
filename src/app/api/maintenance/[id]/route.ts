@@ -1,0 +1,245 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+// GET /api/maintenance/[id] - Get maintenance details
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const cookieStore = cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+        },
+      }
+    )
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const maintenance = await prisma.maintenanceRecord.findUnique({
+      where: { id: params.id },
+      include: {
+        client: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            city: true,
+          }
+        },
+        solarSystem: {
+          select: {
+            id: true,
+            systemName: true,
+            capacity: true,
+          }
+        },
+        technicians: {
+          include: {
+            technician: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                image: true,
+              }
+            }
+          }
+        },
+        parts: {
+          include: {
+            inventoryItem: {
+              select: {
+                id: true,
+                product: {
+                  select: {
+                    name: true,
+                    brand: true,
+                    model: true,
+                  }
+                }
+              }
+            }
+          }
+        },
+        statusHistory: {
+          include: {
+            changedBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              }
+            }
+          },
+          orderBy: {
+            changedAt: 'desc'
+          }
+        },
+        createdByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          }
+        }
+      }
+    })
+
+    if (!maintenance) {
+      return NextResponse.json(
+        { success: false, error: 'Maintenance not found' },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: maintenance
+    })
+  } catch (error) {
+    console.error('Error fetching maintenance:', error)
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+// PATCH /api/maintenance/[id] - Update maintenance
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const cookieStore = cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+        },
+      }
+    )
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const {
+      type,
+      priority,
+      scheduledDate,
+      title,
+      description,
+      privateNotes,
+      workPerformed,
+      laborHours,
+      cost
+    } = body
+
+    const maintenance = await prisma.maintenanceRecord.update({
+      where: { id: params.id },
+      data: {
+        ...(type && { type }),
+        ...(priority && { priority }),
+        ...(scheduledDate && { scheduledDate: new Date(scheduledDate) }),
+        ...(title && { title }),
+        ...(description !== undefined && { description }),
+        ...(privateNotes !== undefined && { privateNotes }),
+        ...(workPerformed !== undefined && { workPerformed }),
+        ...(laborHours !== undefined && { laborHours }),
+        ...(cost !== undefined && { cost }),
+      },
+      include: {
+        client: true,
+        technicians: {
+          include: {
+            technician: true
+          }
+        }
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      data: maintenance
+    })
+  } catch (error) {
+    console.error('Error updating maintenance:', error)
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+// DELETE /api/maintenance/[id] - Cancel maintenance
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const cookieStore = cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+        },
+      }
+    )
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Don't actually delete, just mark as cancelled
+    const maintenance = await prisma.maintenanceRecord.update({
+      where: { id: params.id },
+      data: {
+        status: 'CANCELLED',
+        statusHistory: {
+          create: {
+            status: 'CANCELLED',
+            notes: 'Mantenimiento cancelado',
+            changedById: session.user.id,
+          }
+        }
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      data: maintenance
+    })
+  } catch (error) {
+    console.error('Error cancelling maintenance:', error)
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
