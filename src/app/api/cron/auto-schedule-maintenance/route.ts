@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
         (nextScheduledDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
       )
 
-      if (daysUntilNext > config.notificationDaysBefore) {
+      if (daysUntilNext > config.notifyDaysBefore) {
         // Too early to schedule
         continue
       }
@@ -170,7 +170,10 @@ export async function GET(request: NextRequest) {
           title: 'Mantenimiento Programado',
           message: `Se ha programado un mantenimiento preventivo para ${system.systemName} el ${nextScheduledDate.toLocaleDateString('es-MX')}`,
           type: 'MAINTENANCE_SCHEDULED',
-          relatedId: maintenance.id,
+          data: {
+            maintenanceId: maintenance.id,
+            solarSystemId: system.id,
+          },
           read: false,
         },
       })

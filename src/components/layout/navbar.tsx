@@ -13,15 +13,29 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { Sun, Search, User, Settings, LogOut, Bell } from 'lucide-react'
+import { Sun, Search, User, Settings, LogOut, Bell, Check } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { supabase } from '@/lib/supabase'
+import { formatDistanceToNow } from 'date-fns'
+import { es } from 'date-fns/locale'
+
+interface Notification {
+  id: string
+  title: string
+  message: string
+  type: string
+  read: boolean
+  createdAt: string
+}
 
 export function Navbar() {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
 
   useEffect(() => {
     const getUser = async () => {
@@ -29,10 +43,57 @@ export function Navbar() {
       if (user) {
         setUserEmail(user.email || null)
         setUserName(user.user_metadata?.name || user.email || null)
+        loadNotifications()
       }
     }
     getUser()
+
+    // Poll for new notifications every 30 seconds
+    const interval = setInterval(loadNotifications, 30000)
+    return () => clearInterval(interval)
   }, [])
+
+  const loadNotifications = async () => {
+    try {
+      const response = await fetch('/api/notifications')
+      const data = await response.json()
+
+      if (data.success) {
+        setNotifications(data.data.notifications)
+        setUnreadCount(data.data.unreadCount)
+      }
+    } catch (error) {
+      console.error('Error loading notifications:', error)
+    }
+  }
+
+  const markAsRead = async (notificationId: string) => {
+    try {
+      const response = await fetch(`/api/notifications/${notificationId}/read`, {
+        method: 'PATCH',
+      })
+
+      if (response.ok) {
+        loadNotifications()
+      }
+    } catch (error) {
+      console.error('Error marking notification as read:', error)
+    }
+  }
+
+  const markAllAsRead = async () => {
+    try {
+      const response = await fetch('/api/notifications/mark-all-read', {
+        method: 'POST',
+      })
+
+      if (response.ok) {
+        loadNotifications()
+      }
+    } catch (error) {
+      console.error('Error marking all as read:', error)
+    }
+  }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -76,15 +137,82 @@ export function Navbar() {
         {/* Right side actions */}
         <div className="flex items-center space-x-4">
           {/* Notifications */}
-          <Button variant="ghost" size="sm" className="relative">
-            <Bell className="h-5 w-5" />
-            <Badge 
-              variant="destructive" 
-              className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center text-xs"
-            >
-              3
-            </Badge>
-          </Button>
+          <DropdownMenu open={notificationsOpen} onOpenChange={setNotificationsOpen}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="relative">
+                <Bell className="h-5 w-5" />
+                {unreadCount > 0 && (
+                  <Badge
+                    variant="destructive"
+                    className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center text-xs p-0"
+                  >
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </Badge>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-80" align="end">
+              <DropdownMenuLabel className="flex items-center justify-between">
+                <span>Notificaciones</span>
+                {unreadCount > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto p-0 text-xs text-blue-600 hover:text-blue-700"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      markAllAsRead()
+                    }}
+                  >
+                    <Check className="mr-1 h-3 w-3" />
+                    Marcar todas como leídas
+                  </Button>
+                )}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+
+              <div className="max-h-96 overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-gray-500">
+                    <Bell className="mx-auto h-8 w-8 text-gray-300 mb-2" />
+                    <p>No tienes notificaciones</p>
+                  </div>
+                ) : (
+                  notifications.map((notification) => (
+                    <DropdownMenuItem
+                      key={notification.id}
+                      className={`flex-col items-start p-3 cursor-pointer ${
+                        !notification.read ? 'bg-blue-50' : ''
+                      }`}
+                      onClick={() => {
+                        if (!notification.read) {
+                          markAsRead(notification.id)
+                        }
+                      }}
+                    >
+                      <div className="flex items-start justify-between w-full gap-2">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{notification.title}</p>
+                          <p className="text-xs text-gray-600 mt-1">
+                            {notification.message}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {formatDistanceToNow(new Date(notification.createdAt), {
+                              addSuffix: true,
+                              locale: es,
+                            })}
+                          </p>
+                        </div>
+                        {!notification.read && (
+                          <div className="h-2 w-2 rounded-full bg-blue-600 flex-shrink-0 mt-1"></div>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* User Menu */}
           <DropdownMenu>

@@ -13,7 +13,7 @@ interface MaintenanceConfig {
   id: string
   equipmentType: string
   intervalDays: number
-  notificationDaysBefore: number
+  notifyDaysBefore: number
   autoSchedule: boolean
 }
 
@@ -61,7 +61,7 @@ export default function MaintenanceConfigPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           intervalDays: config.intervalDays,
-          notificationDaysBefore: config.notificationDaysBefore,
+          notifyDaysBefore: config.notifyDaysBefore,
           autoSchedule: config.autoSchedule,
         }),
       })
@@ -161,11 +161,11 @@ export default function MaintenanceConfigPage() {
                   id={`notification-${config.equipmentType}`}
                   type="number"
                   min="1"
-                  value={config.notificationDaysBefore}
+                  value={config.notifyDaysBefore}
                   onChange={(e) =>
                     updateConfig(
                       config.equipmentType,
-                      'notificationDaysBefore',
+                      'notifyDaysBefore',
                       parseInt(e.target.value)
                     )
                   }
