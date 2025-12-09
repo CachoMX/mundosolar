@@ -3,7 +3,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-const API_URL = Constants.expoConfig?.extra?.apiUrl || 'http://192.168.1.81:3000';
+// Determine API URL based on platform
+const getApiUrl = () => {
+  // Check if running on web
+  if (Platform.OS === 'web') {
+    // Use window.location to get the current host
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      // If on localhost, use localhost:3000
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'http://localhost:3000';
+      }
+    }
+  }
+
+  // For native apps or production, use config or default
+  return Constants.expoConfig?.extra?.apiUrl || 'http://localhost:3000';
+};
+
+const API_URL = getApiUrl();
+console.log('🌐 API URL:', API_URL);
 
 const api = axios.create({
   baseURL: API_URL,
