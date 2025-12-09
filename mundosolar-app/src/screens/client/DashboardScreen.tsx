@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   Dimensions,
 } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+
 import { useAuth } from '../../contexts/AuthContext';
 import { systemsAPI, maintenanceAPI, paymentsAPI } from '../../services/api';
 import { Colors, Spacing, BorderRadius, FontSizes } from '../../constants/colors';
@@ -88,25 +88,25 @@ export const ClientDashboard = () => {
 
       {/* Stats Cards */}
       <View style={styles.statsContainer}>
-        <Animated.View entering={FadeInDown.delay(100)} style={styles.statCard}>
+        <View style={styles.statCard}>
           <View style={[styles.statIcon, { backgroundColor: Colors.primary + '20' }]}>
             <Text style={styles.statEmoji}>☀️</Text>
           </View>
           <Text style={styles.statValue}>{systems.length}</Text>
           <Text style={styles.statLabel}>Sistemas Activos</Text>
-        </Animated.View>
+        </View>
 
-        <Animated.View entering={FadeInDown.delay(200)} style={styles.statCard}>
+        <View style={styles.statCard}>
           <View style={[styles.statIcon, { backgroundColor: Colors.success + '20' }]}>
             <Text style={styles.statEmoji}>⚡</Text>
           </View>
           <Text style={styles.statValue}>{totalProduction.toFixed(1)} kWh</Text>
           <Text style={styles.statLabel}>Producción Total</Text>
-        </Animated.View>
+        </View>
       </View>
 
       {/* Upcoming Maintenance */}
-      <Animated.View entering={FadeInDown.delay(300)} style={styles.section}>
+      <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Próximos Mantenimientos</Text>
           <TouchableOpacity>
@@ -144,11 +144,11 @@ export const ClientDashboard = () => {
             </TouchableOpacity>
           ))
         )}
-      </Animated.View>
+      </View>
 
       {/* Pending Payments */}
       {pendingPayments.length > 0 && (
-        <Animated.View entering={FadeInDown.delay(400)} style={styles.section}>
+        <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Pagos Pendientes</Text>
             <TouchableOpacity>
@@ -187,11 +187,11 @@ export const ClientDashboard = () => {
               <Text style={styles.paymentAmount}>${payment.amount.toFixed(2)}</Text>
             </View>
           ))}
-        </Animated.View>
+        </View>
       )}
 
       {/* Quick Actions */}
-      <Animated.View entering={FadeInDown.delay(500)} style={styles.section}>
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
         <View style={styles.actionsGrid}>
           <TouchableOpacity style={styles.actionCard}>
@@ -211,7 +211,7 @@ export const ClientDashboard = () => {
             <Text style={styles.actionLabel}>Solicitar Servicio</Text>
           </TouchableOpacity>
         </View>
-      </Animated.View>
+      </View>
     </ScrollView>
   );
 };

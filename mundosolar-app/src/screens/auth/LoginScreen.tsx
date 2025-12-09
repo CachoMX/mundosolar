@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,16 +9,8 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
-import Animated, {
-  FadeInDown,
-  FadeInUp,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated';
 import { useAuth } from '../../contexts/AuthContext';
 import { Colors, Spacing, BorderRadius, FontSizes } from '../../constants/colors';
 
@@ -28,33 +20,23 @@ export const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
 
-  const sunScale = useSharedValue(1);
-  const sunRotation = useSharedValue(0);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
-  React.useEffect(() => {
-    // Pulsating sun animation
-    sunScale.value = withRepeat(
-      withSpring(1.1, { damping: 2 }),
-      -1,
-      true
-    );
-
-    // Rotating sun animation
-    sunRotation.value = withRepeat(
-      withTiming(360, { duration: 20000 }),
-      -1,
-      false
-    );
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 4,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
-
-  const sunStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { scale: sunScale.value },
-        { rotate: `${sunRotation.value}deg` },
-      ],
-    };
-  });
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -82,9 +64,9 @@ export const LoginScreen = () => {
     >
       <View style={styles.backgroundGradient} />
 
-      {/* Animated Sun Logo */}
-      <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.logoContainer}>
-        <Animated.View style={[styles.sunContainer, sunStyle]}>
+      <Animated.View style={[styles.logoContainer, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+        {/* Sun Logo */}
+        <View style={styles.sunContainer}>
           <View style={styles.sun}>
             <View style={styles.sunCore} />
             {[...Array(8)].map((_, i) => (
@@ -99,17 +81,13 @@ export const LoginScreen = () => {
               />
             ))}
           </View>
-        </Animated.View>
-        <Animated.Text entering={FadeInUp.delay(400)} style={styles.title}>
-          MundoSolar
-        </Animated.Text>
-        <Animated.Text entering={FadeInUp.delay(600)} style={styles.subtitle}>
-          Sistema de Gestión Solar
-        </Animated.Text>
+        </View>
+        <Text style={styles.title}>MundoSolar</Text>
+        <Text style={styles.subtitle}>Sistema de Gestión Solar</Text>
       </Animated.View>
 
       {/* Login Form */}
-      <Animated.View entering={FadeInUp.delay(800).springify()} style={styles.formContainer}>
+      <Animated.View style={[styles.formContainer, { opacity: fadeAnim }]}>
         <View style={styles.inputContainer}>
           <Text style={styles.label}>Email</Text>
           <TextInput
@@ -157,7 +135,7 @@ export const LoginScreen = () => {
       </Animated.View>
 
       {/* Footer */}
-      <Animated.View entering={FadeInUp.delay(1000)} style={styles.footer}>
+      <Animated.View style={[styles.footer, { opacity: fadeAnim }]}>
         <Text style={styles.footerText}>
           © 2024 MundoSolar • Energía Renovable
         </Text>
