@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI } from '../services/api';
 import { User, AuthResponse } from '../types';
 
@@ -23,7 +23,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadStoredUser = async () => {
     try {
-      const storedUser = await SecureStore.getItemAsync('user_data');
+      const storedUser = await AsyncStorage.getItem('user_data');
       if (storedUser) {
         setUser(JSON.parse(storedUser));
       }
@@ -39,8 +39,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await authAPI.login(email, password);
 
       if (response.success && response.user && response.token) {
-        await SecureStore.setItemAsync('auth_token', response.token);
-        await SecureStore.setItemAsync('user_data', JSON.stringify(response.user));
+        await AsyncStorage.setItem('auth_token', response.token);
+        await AsyncStorage.setItem('user_data', JSON.stringify(response.user));
         setUser(response.user);
       }
 

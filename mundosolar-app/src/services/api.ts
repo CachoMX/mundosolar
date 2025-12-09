@@ -1,5 +1,6 @@
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 const API_URL = process.env.API_URL || 'http://localhost:3000';
 
@@ -10,10 +11,36 @@ const api = axios.create({
   },
 });
 
+// Storage helper functions
+const getItem = async (key: string) => {
+  try {
+    return await AsyncStorage.getItem(key);
+  } catch (error) {
+    console.error('Error getting item:', error);
+    return null;
+  }
+};
+
+const setItem = async (key: string, value: string) => {
+  try {
+    await AsyncStorage.setItem(key, value);
+  } catch (error) {
+    console.error('Error setting item:', error);
+  }
+};
+
+const deleteItem = async (key: string) => {
+  try {
+    await AsyncStorage.removeItem(key);
+  } catch (error) {
+    console.error('Error deleting item:', error);
+  }
+};
+
 // Add auth token to requests
 api.interceptors.request.use(
   async (config) => {
-    const token = await SecureStore.getItemAsync('auth_token');
+    const token = await getItem('auth_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -29,8 +56,8 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 401) {
-      await SecureStore.deleteItemAsync('auth_token');
-      await SecureStore.deleteItemAsync('user_data');
+      await deleteItem('auth_token');
+      await deleteItem('user_data');
     }
     return Promise.reject(error);
   }
@@ -46,8 +73,8 @@ export const authAPI = {
   },
 
   logout: async () => {
-    await SecureStore.deleteItemAsync('auth_token');
-    await SecureStore.deleteItemAsync('user_data');
+    await deleteItem('auth_token');
+    await deleteItem('user_data');
   },
 
   getCurrentUser: async () => {
