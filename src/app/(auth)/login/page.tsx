@@ -9,9 +9,19 @@ import { Label } from '@/components/ui/label'
 import { Loader2, Sun, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
+// Helper to detect if input is email or phone
+function isEmail(input: string): boolean {
+  return input.includes('@')
+}
+
+// Validate phone: must be exactly 10 digits, no spaces, dashes, or special characters
+function isValidPhone(phone: string): boolean {
+  return /^\d{10}$/.test(phone)
+}
+
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('') // Can be email or phone
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -22,20 +32,52 @@ export default function LoginPage() {
     setError(null)
 
     try {
-      // Login with Supabase Auth
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      })
+      const inputIsEmail = isEmail(identifier)
 
-      if (signInError) {
-        setError(signInError.message)
-        return
-      }
+      if (inputIsEmail) {
+        // Login with Supabase Auth for admin/staff users
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
+          email: identifier,
+          password
+        })
 
-      if (data.user) {
-        // Redirect to dashboard
-        router.push('/')
+        if (signInError) {
+          setError(signInError.message)
+          return
+        }
+
+        if (data.user) {
+          router.push('/')
+          router.refresh()
+        }
+      } else {
+        // Login with phone number for clients
+        // Validate phone format before sending
+        if (!isValidPhone(identifier)) {
+          setError('El teléfono debe ser exactamente 10 dígitos sin espacios, guiones ni +52')
+          return
+        }
+
+        const response = await fetch('/api/auth/client-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: identifier, password })
+        })
+
+        const result = await response.json()
+
+        if (!response.ok) {
+          setError(result.error || 'Error al iniciar sesión')
+          return
+        }
+
+        if (result.requirePasswordChange) {
+          // Redirect to password change page
+          router.push(`/cambiar-contrasenia?clientId=${result.clientId}`)
+        } else {
+          // Redirect to client dashboard
+          router.push('/cliente')
+        }
         router.refresh()
       }
     } catch (err) {
@@ -74,13 +116,13 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="identifier">Email o Teléfono</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="tu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="identifier"
+                type="text"
+                placeholder="tu@email.com o 3121234567"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 required
                 disabled={loading}
               />

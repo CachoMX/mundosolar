@@ -40,6 +40,10 @@ export async function GET(request: NextRequest) {
         scheduledDate: {
           gte: new Date(start),
           lte: new Date(end)
+        },
+        // Exclude cancelled maintenances from admin calendar
+        status: {
+          not: 'CANCELLED'
         }
       },
       include: {

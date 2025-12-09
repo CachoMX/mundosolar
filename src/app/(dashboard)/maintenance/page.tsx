@@ -87,11 +87,17 @@ export default function MaintenancePage() {
       const eventsData = await eventsRes.json()
 
       if (eventsData.success) {
-        const formattedEvents = eventsData.data.map((event: any) => ({
-          ...event,
-          start: new Date(event.start),
-          end: new Date(event.end)
-        }))
+        const formattedEvents = eventsData.data.map((event: any) => {
+          // Parse dates and adjust for timezone to show correct day
+          const startDate = new Date(event.start)
+          const endDate = new Date(event.end)
+
+          return {
+            ...event,
+            start: startDate,
+            end: endDate
+          }
+        })
         setEvents(formattedEvents)
       }
     } catch (error) {
@@ -133,9 +139,11 @@ export default function MaintenancePage() {
       CANCELLED: '#ef4444'
     }
 
+    const status = event.resource?.status || 'SCHEDULED'
+
     return {
       style: {
-        backgroundColor: colors[event.resource.status] || '#3b82f6',
+        backgroundColor: colors[status] || '#3b82f6',
         borderRadius: '4px',
         opacity: 0.8,
         color: 'white',

@@ -106,6 +106,8 @@ model Client {
   lastName    String
   email       String   @unique
   phone       String?
+  password    String?  // Hashed password for client login
+  requirePasswordChange Boolean @default(true) // Force password change on first login
   address     String?
   city        String?
   state       String?

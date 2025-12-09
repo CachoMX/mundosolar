@@ -9,7 +9,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -27,8 +27,18 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Find the Prisma user by email to get the correct ID
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email! },
+      select: { id: true }
+    })
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
     const body = await request.json()
-    const { status, notes } = body
+    const { status, notes, scheduledDate, technicianIds } = body
 
     if (!status) {
       return NextResponse.json(
@@ -43,9 +53,14 @@ export async function PATCH(
         create: {
           status,
           notes: notes || null,
-          changedById: session.user.id,
+          changedById: user.id,
         }
       }
+    }
+
+    // When approving (changing to SCHEDULED), allow setting the scheduled date
+    if (status === 'SCHEDULED' && scheduledDate) {
+      updateData.scheduledDate = new Date(scheduledDate)
     }
 
     // Update dates based on status
@@ -55,6 +70,21 @@ export async function PATCH(
 
     if (status === 'COMPLETED') {
       updateData.completedDate = new Date()
+    }
+
+    // If technicianIds provided, update technicians
+    if (technicianIds && technicianIds.length > 0) {
+      // Delete existing technicians
+      await prisma.maintenanceTechnician.deleteMany({
+        where: { maintenanceId: params.id }
+      })
+      // Add new technicians
+      updateData.technicians = {
+        create: technicianIds.map((techId: string, index: number) => ({
+          technicianId: techId,
+          role: index === 0 ? 'Lead' : 'Assistant'
+        }))
+      }
     }
 
     const maintenance = await prisma.maintenanceRecord.update({
@@ -95,19 +125,34 @@ export async function PATCH(
         break
     }
 
+    // Try to create notification for client (may fail if client doesn't have a user account)
     if (notificationMessage) {
-      await prisma.notification.create({
-        data: {
-          userId: maintenance.clientId,
-          type: `maintenance_${status.toLowerCase()}`,
-          title: 'Actualización de Mantenimiento',
-          message: notificationMessage,
-          data: {
-            maintenanceId: maintenance.id,
-            status: status
-          }
+      try {
+        // First check if client has a linked user account
+        const clientUser = await prisma.user.findFirst({
+          where: { email: maintenance.client.email },
+          select: { id: true }
+        })
+
+        if (clientUser) {
+          await prisma.notification.create({
+            data: {
+              userId: clientUser.id,
+              type: `maintenance_${status.toLowerCase()}`,
+              title: 'Actualización de Mantenimiento',
+              message: notificationMessage,
+              data: {
+                maintenanceId: maintenance.id,
+                status: status
+              }
+            }
+          })
         }
-      })
+        // If no user account exists, skip notification (client will see status change in their portal)
+      } catch (notifError) {
+        // Log but don't fail the request if notification creation fails
+        console.warn('Could not create notification for client:', notifError)
+      }
     }
 
     return NextResponse.json({

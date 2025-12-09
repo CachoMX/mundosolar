@@ -28,7 +28,11 @@ interface Notification {
   createdAt: string
 }
 
-export function Navbar() {
+interface NavbarProps {
+  isClientPortal?: boolean
+}
+
+export function Navbar({ isClientPortal = false }: NavbarProps) {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
   const [userEmail, setUserEmail] = useState<string | null>(null)
@@ -38,20 +42,38 @@ export function Navbar() {
   const [notificationsOpen, setNotificationsOpen] = useState(false)
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        setUserEmail(user.email || null)
-        setUserName(user.user_metadata?.name || user.email || null)
-        loadNotifications()
+    if (isClientPortal) {
+      // Get client info from session
+      const getClientSession = async () => {
+        try {
+          const response = await fetch('/api/auth/client-session')
+          const result = await response.json()
+          if (result.success) {
+            setUserName(`${result.client.firstName} ${result.client.lastName}`)
+            setUserEmail(result.client.email)
+          }
+        } catch (err) {
+          console.error('Error getting client session:', err)
+        }
       }
-    }
-    getUser()
+      getClientSession()
+    } else {
+      // Get admin/staff info from Supabase
+      const getUser = async () => {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          setUserEmail(user.email || null)
+          setUserName(user.user_metadata?.name || user.email || null)
+          loadNotifications()
+        }
+      }
+      getUser()
 
-    // Poll for new notifications every 30 seconds
-    const interval = setInterval(loadNotifications, 30000)
-    return () => clearInterval(interval)
-  }, [])
+      // Poll for new notifications every 30 seconds
+      const interval = setInterval(loadNotifications, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [isClientPortal])
 
   const loadNotifications = async () => {
     try {
@@ -96,17 +118,29 @@ export function Navbar() {
   }
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
+    if (isClientPortal) {
+      await fetch('/api/auth/client-logout', { method: 'POST' })
+    } else {
+      await supabase.auth.signOut()
+    }
     router.push('/login')
     router.refresh()
   }
 
   const handleProfile = () => {
-    router.push('/profile')
+    if (isClientPortal) {
+      router.push('/cliente/perfil')
+    } else {
+      router.push('/profile')
+    }
   }
 
   const handleSettings = () => {
-    router.push('/settings')
+    if (isClientPortal) {
+      router.push('/cliente/perfil')
+    } else {
+      router.push('/settings')
+    }
   }
 
   return (

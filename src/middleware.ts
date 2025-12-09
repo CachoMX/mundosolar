@@ -69,8 +69,15 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
-  // If no session and trying to access protected route, redirect to login
-  if (!session && !req.nextUrl.pathname.startsWith('/login')) {
+  // Public routes that don't require authentication
+  const publicRoutes = ['/login', '/cambiar-contrasenia', '/cliente']
+  const isPublicRoute = publicRoutes.some(route => req.nextUrl.pathname.startsWith(route))
+
+  // Check for client token (for client authentication)
+  const clientToken = req.cookies.get('client-token')?.value
+
+  // If no session and no client token, and trying to access protected route, redirect to login
+  if (!session && !clientToken && !isPublicRoute) {
     return NextResponse.redirect(new URL('/login', req.url))
   }
 

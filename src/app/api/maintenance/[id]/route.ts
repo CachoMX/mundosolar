@@ -198,7 +198,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -216,6 +216,16 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Find the Prisma user by email to get the correct ID
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email! },
+      select: { id: true }
+    })
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
     // Don't actually delete, just mark as cancelled
     const maintenance = await prisma.maintenanceRecord.update({
       where: { id: params.id },
@@ -225,7 +235,7 @@ export async function DELETE(
           create: {
             status: 'CANCELLED',
             notes: 'Mantenimiento cancelado',
-            changedById: session.user.id,
+            changedById: user.id,
           }
         }
       }

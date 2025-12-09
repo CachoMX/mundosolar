@@ -8,6 +8,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   ArrowLeft,
   Calendar,
@@ -18,6 +36,8 @@ import {
   CheckCircle2,
   Edit,
   Trash2,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react'
 import { MaintenanceFormModal } from '@/components/maintenance-form-modal'
 
@@ -68,11 +88,17 @@ interface MaintenanceDetail {
     id: string
     status: string
     notes: string
-    createdAt: string
+    changedAt: string
     changedBy: {
       name: string
     }
   }>
+}
+
+interface Technician {
+  id: string
+  name: string
+  email: string
 }
 
 export default function MaintenanceDetailPage() {
@@ -82,11 +108,40 @@ export default function MaintenanceDetailPage() {
   const [loading, setLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
 
+  // Approval modal state
+  const [showApprovalModal, setShowApprovalModal] = useState(false)
+  const [technicians, setTechnicians] = useState<Technician[]>([])
+  const [approving, setApproving] = useState(false)
+  const [approvalData, setApprovalData] = useState({
+    scheduledDate: '',
+    scheduledTime: '09:00',
+    technicianId: '',
+    notes: ''
+  })
+
+  // Reject modal state
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+
   useEffect(() => {
     if (params.id) {
       loadMaintenance()
     }
+    loadTechnicians()
   }, [params.id])
+
+  const loadTechnicians = async () => {
+    try {
+      const response = await fetch('/api/technicians')
+      const data = await response.json()
+      if (data.success) {
+        setTechnicians(data.data)
+      }
+    } catch (error) {
+      console.error('Error loading technicians:', error)
+    }
+  }
 
   const loadMaintenance = async () => {
     try {
@@ -153,6 +208,96 @@ export default function MaintenanceDetailPage() {
     }
   }
 
+  const openApprovalModal = () => {
+    // Pre-fill with preferred date if available
+    const preferredDate = maintenance?.scheduledDate
+      ? new Date(maintenance.scheduledDate).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0]
+
+    setApprovalData({
+      scheduledDate: preferredDate,
+      scheduledTime: '09:00',
+      technicianId: '',
+      notes: ''
+    })
+    setShowApprovalModal(true)
+  }
+
+  const handleApprove = async () => {
+    if (!approvalData.scheduledDate) {
+      alert('Por favor selecciona una fecha')
+      return
+    }
+
+    setApproving(true)
+
+    try {
+      // Create date string with explicit timezone to avoid UTC conversion issues
+      // We send the date as-is without timezone conversion so it displays correctly
+      const scheduledDateTimeStr = `${approvalData.scheduledDate}T${approvalData.scheduledTime}:00.000Z`
+
+      const response = await fetch(`/api/maintenance/${params.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'SCHEDULED',
+          scheduledDate: scheduledDateTimeStr,
+          technicianIds: approvalData.technicianId ? [approvalData.technicianId] : [],
+          notes: approvalData.notes || 'Solicitud aprobada'
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setShowApprovalModal(false)
+        loadMaintenance()
+      } else {
+        alert(data.error || 'Error al aprobar solicitud')
+      }
+    } catch (error) {
+      console.error('Error approving maintenance:', error)
+      alert('Error al aprobar solicitud')
+    } finally {
+      setApproving(false)
+    }
+  }
+
+  const handleReject = async () => {
+    if (!rejectReason.trim()) {
+      alert('Por favor ingresa un motivo para rechazar la solicitud')
+      return
+    }
+
+    setRejecting(true)
+
+    try {
+      const response = await fetch(`/api/maintenance/${params.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'CANCELLED',
+          notes: `Solicitud rechazada: ${rejectReason}`
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setShowRejectModal(false)
+        setRejectReason('')
+        loadMaintenance()
+      } else {
+        alert(data.error || 'Error al rechazar solicitud')
+      }
+    } catch (error) {
+      console.error('Error rejecting maintenance:', error)
+      alert('Error al rechazar solicitud')
+    } finally {
+      setRejecting(false)
+    }
+  }
+
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
       PENDING_APPROVAL: 'Pendiente Aprobación',
@@ -203,12 +348,23 @@ export default function MaintenanceDetailPage() {
   const getNextStatusAction = () => {
     if (!maintenance) return null
 
+    // For PENDING_APPROVAL, show both approve and reject buttons
+    if (maintenance.status === 'PENDING_APPROVAL') {
+      return (
+        <>
+          <Button onClick={openApprovalModal} className="bg-green-600 hover:bg-green-700">
+            <CheckCircle2 className="mr-2 h-4 w-4" />
+            Aprobar y Programar
+          </Button>
+          <Button variant="destructive" onClick={() => setShowRejectModal(true)}>
+            <AlertCircle className="mr-2 h-4 w-4" />
+            Rechazar Solicitud
+          </Button>
+        </>
+      )
+    }
+
     const statusFlow: Record<string, { next: string; label: string; icon: any }> = {
-      PENDING_APPROVAL: {
-        next: 'SCHEDULED',
-        label: 'Aprobar y Programar',
-        icon: Calendar,
-      },
       SCHEDULED: {
         next: 'IN_PROGRESS',
         label: 'Iniciar Mantenimiento',
@@ -272,15 +428,20 @@ export default function MaintenanceDetailPage() {
         </div>
         <div className="flex gap-2">
           {getNextStatusAction()}
-          <Button variant="outline" onClick={() => setShowEditModal(true)}>
-            <Edit className="mr-2 h-4 w-4" />
-            Editar
-          </Button>
-          {maintenance.status !== 'CANCELLED' && (
-            <Button variant="destructive" onClick={deleteMaintenance}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Cancelar
-            </Button>
+          {/* Only show Edit and Cancel buttons when NOT in PENDING_APPROVAL status */}
+          {maintenance.status !== 'PENDING_APPROVAL' && (
+            <>
+              <Button variant="outline" onClick={() => setShowEditModal(true)}>
+                <Edit className="mr-2 h-4 w-4" />
+                Editar
+              </Button>
+              {maintenance.status !== 'CANCELLED' && (
+                <Button variant="destructive" onClick={deleteMaintenance}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Cancelar
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -479,7 +640,7 @@ export default function MaintenanceDetailPage() {
                   <div className="flex items-center gap-2">
                     {getStatusBadge(history.status)}
                     <span className="text-sm text-muted-foreground">
-                      {format(new Date(history.createdAt), 'dd/MM/yyyy HH:mm', { locale: es })}
+                      {format(new Date(history.changedAt), 'dd/MM/yyyy HH:mm', { locale: es })}
                     </span>
                   </div>
                   <p className="text-sm text-muted-foreground mt-1">
@@ -505,6 +666,179 @@ export default function MaintenanceDetailPage() {
         }}
         editData={maintenance}
       />
+
+      {/* Approval Modal */}
+      <Dialog open={showApprovalModal} onOpenChange={setShowApprovalModal}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Aprobar Solicitud de Mantenimiento</DialogTitle>
+            <DialogDescription>
+              Programa la fecha y asigna un técnico para este mantenimiento.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Request Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-medium text-blue-900">{maintenance?.title}</h4>
+              <p className="text-sm text-blue-700 mt-1">
+                Cliente: {maintenance?.client.firstName} {maintenance?.client.lastName}
+              </p>
+              {maintenance?.description && (
+                <p className="text-sm text-blue-600 mt-2">{maintenance.description}</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="scheduledDate">Fecha *</Label>
+                <Input
+                  id="scheduledDate"
+                  type="date"
+                  value={approvalData.scheduledDate}
+                  onChange={(e) => setApprovalData({ ...approvalData, scheduledDate: e.target.value })}
+                  min={new Date().toISOString().split('T')[0]}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="scheduledTime">Hora *</Label>
+                <Input
+                  id="scheduledTime"
+                  type="time"
+                  value={approvalData.scheduledTime}
+                  onChange={(e) => setApprovalData({ ...approvalData, scheduledTime: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="technicianId">Técnico Asignado</Label>
+              <Select
+                value={approvalData.technicianId || "none"}
+                onValueChange={(value) => setApprovalData({ ...approvalData, technicianId: value === "none" ? "" : value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona un técnico (opcional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin asignar por ahora</SelectItem>
+                  {technicians.map((tech) => (
+                    <SelectItem key={tech.id} value={tech.id}>
+                      {tech.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notas (opcional)</Label>
+              <Textarea
+                id="notes"
+                placeholder="Notas adicionales para el técnico o el cliente..."
+                value={approvalData.notes}
+                onChange={(e) => setApprovalData({ ...approvalData, notes: e.target.value })}
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowApprovalModal(false)}
+              disabled={approving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleApprove}
+              disabled={approving}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {approving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Aprobando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Aprobar y Programar
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Modal */}
+      <Dialog open={showRejectModal} onOpenChange={setShowRejectModal}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle>Rechazar Solicitud de Mantenimiento</DialogTitle>
+            <DialogDescription>
+              Esta acción cancelará la solicitud del cliente. Por favor ingresa un motivo.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Request Info */}
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <h4 className="font-medium text-red-900">{maintenance?.title}</h4>
+              <p className="text-sm text-red-700 mt-1">
+                Cliente: {maintenance?.client.firstName} {maintenance?.client.lastName}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="rejectReason">Motivo del rechazo *</Label>
+              <Textarea
+                id="rejectReason"
+                placeholder="Explica por qué se rechaza esta solicitud..."
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={4}
+                required
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowRejectModal(false)
+                setRejectReason('')
+              }}
+              disabled={rejecting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleReject}
+              disabled={rejecting}
+              variant="destructive"
+            >
+              {rejecting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Rechazando...
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="mr-2 h-4 w-4" />
+                  Rechazar Solicitud
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -195,9 +195,16 @@ export function MaintenanceFormModal({
     try {
       setLoading(true)
 
+      // Format date to preserve the selected date without timezone conversion
+      // This ensures the date displays correctly on the calendar
+      const year = data.scheduledDate.getFullYear()
+      const month = String(data.scheduledDate.getMonth() + 1).padStart(2, '0')
+      const day = String(data.scheduledDate.getDate()).padStart(2, '0')
+      const scheduledDateStr = `${year}-${month}-${day}T12:00:00.000Z`
+
       const payload = {
         ...data,
-        scheduledDate: data.scheduledDate.toISOString(),
+        scheduledDate: scheduledDateStr,
         solarSystemId: data.solarSystemId || null,
       }
 
