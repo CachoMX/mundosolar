@@ -3,10 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-// Determine API URL based on platform
-// Use production API by defaultconst API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://mundosolar.vercel.app';console.log('🌐 API URL:', API_URL);
-
-const API_URL = getApiUrl();
+// Use production API by default
+const API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://mundosolar.vercel.app';
 console.log('🌐 API URL:', API_URL);
 
 const api = axios.create({
