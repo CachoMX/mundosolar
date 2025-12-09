@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Zap, Sun, Battery, TrendingUp, Loader2, RefreshCw, AlertCircle, Users, User, Settings } from 'lucide-react'
+import { Plus, Zap, Sun, Battery, TrendingUp, Loader2, RefreshCw, AlertCircle, Users, User, Settings, LineChart } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ClientHistoryModal } from '@/components/client-history-modal'
 
 interface Plant {
   plantName: string
@@ -72,6 +73,10 @@ export default function SolarSystemsPage() {
   const [clientSystems, setClientSystems] = useState<ClientGrowattData[]>([])
   const [clientsLoading, setClientsLoading] = useState(false)
   const [clientsError, setClientsError] = useState<string | null>(null)
+
+  // History modal state
+  const [historyModalOpen, setHistoryModalOpen] = useState(false)
+  const [selectedClient, setSelectedClient] = useState<{ id: string, name: string } | null>(null)
 
   const fetchGrowattData = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -685,12 +690,12 @@ export default function SolarSystemsPage() {
                           </CardDescription>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-3">
                         <Badge variant={
-                          clientData.status === 'success' ? 'default' : 
+                          clientData.status === 'success' ? 'default' :
                           clientData.status === 'loading' ? 'secondary' : 'destructive'
                         }>
-                          {clientData.status === 'success' ? 'Conectado' : 
+                          {clientData.status === 'success' ? 'Conectado' :
                            clientData.status === 'loading' ? 'Cargando...' : 'Error'}
                         </Badge>
                         {clientData.clientInfo.expectedDailyGeneration && (
@@ -698,6 +703,20 @@ export default function SolarSystemsPage() {
                             Esperado: {clientData.clientInfo.expectedDailyGeneration} kWh/día
                           </div>
                         )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedClient({
+                              id: clientData.clientInfo.id,
+                              name: `${clientData.clientInfo.firstName} ${clientData.clientInfo.lastName}`
+                            })
+                            setHistoryModalOpen(true)
+                          }}
+                        >
+                          <LineChart className="mr-2 h-4 w-4" />
+                          Ver Historial
+                        </Button>
                       </div>
                     </div>
                   </CardHeader>
@@ -810,6 +829,16 @@ export default function SolarSystemsPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* History Modal */}
+      {selectedClient && (
+        <ClientHistoryModal
+          open={historyModalOpen}
+          onOpenChange={setHistoryModalOpen}
+          clientId={selectedClient.id}
+          clientName={selectedClient.name}
+        />
+      )}
     </div>
   )
 }
