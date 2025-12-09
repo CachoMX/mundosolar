@@ -43,6 +43,21 @@ interface GrowattApiResponse {
 }
 
 /**
+ * Hash password for Growatt API
+ */
+function hashPassword(password: string): string {
+  const crypto = require('crypto')
+  const hash = crypto.createHash('md5').update(password).digest('hex').toLowerCase()
+  const chars = hash.split('')
+  for (let i = 0; i < chars.length; i += 2) {
+    if (chars[i] === '0') {
+      chars[i] = 'c'
+    }
+  }
+  return chars.join('')
+}
+
+/**
  * Fetch data from Growatt API for a specific client
  */
 async function fetchGrowattDataForClient(
@@ -51,75 +66,113 @@ async function fetchGrowattDataForClient(
   password: string
 ): Promise<GrowattPlantData | null> {
   try {
-    // TODO: Replace with actual Growatt API implementation
-    // This is a placeholder for the actual API call
+    const endpoint = process.env.GROWATT_API_URL || 'https://openapi.growatt.com'
 
-    const growattApiUrl = process.env.GROWATT_API_URL || 'https://openapi.growatt.com'
+    // Step 1: Login to get fresh token
+    const hashedPassword = hashPassword(password)
+    const loginUrl = `${endpoint}/newTwoLoginAPI.do`
 
-    // Step 1: Login to Growatt
-    const loginResponse = await fetch(`${growattApiUrl}/login`, {
+    const formData = new URLSearchParams()
+    formData.append('userName', username)
+    formData.append('password', hashedPassword)
+
+    let freshToken: string | null = null
+    let sessionCookies: string = ''
+
+    const loginResponse = await fetch(loginUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'MundoSolar/1.0'
+      },
+      body: formData.toString()
     })
 
     if (!loginResponse.ok) {
-      throw new Error(`Growatt login failed for client ${clientId}`)
+      throw new Error(`Growatt login failed for client ${clientId}: ${loginResponse.status}`)
     }
 
-    const loginData = await loginResponse.json()
-    const token = loginData.token
+    const loginResult = await loginResponse.json()
+    if (!loginResult.back || !loginResult.back.success) {
+      throw new Error(`Growatt login failed for client ${clientId}: ${loginResult.back?.msg || 'Unknown error'}`)
+    }
+
+    freshToken = loginResult.back.user?.cpowerToken
+
+    // Capture session cookies
+    const setCookieHeaders = loginResponse.headers.get('set-cookie')
+    if (setCookieHeaders) {
+      sessionCookies = setCookieHeaders.split(',').map(cookie => {
+        const [nameValue] = cookie.trim().split(';')
+        return nameValue.trim()
+      }).join('; ')
+    }
+
+    if (!freshToken) {
+      throw new Error(`No token received for client ${clientId}`)
+    }
 
     // Step 2: Get plant list
-    const plantsResponse = await fetch(`${growattApiUrl}/plants`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+    const plantListUrl = `${endpoint}/PlantListAPI.do?token=${encodeURIComponent(freshToken)}`
+    const headers: Record<string, string> = {
+      'User-Agent': 'MundoSolar/1.0',
+      'Accept': 'application/json',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Cache-Control': 'no-cache'
+    }
+
+    if (sessionCookies) {
+      headers['Cookie'] = sessionCookies
+    }
+
+    const plantsResponse = await fetch(plantListUrl, {
+      method: 'GET',
+      headers
     })
 
     if (!plantsResponse.ok) {
-      throw new Error(`Failed to fetch plants for client ${clientId}`)
+      throw new Error(`Failed to fetch plants for client ${clientId}: ${plantsResponse.status}`)
     }
 
-    const plantsData = await plantsResponse.json()
+    const plantsResult = await plantsResponse.json()
 
-    // Assuming the first plant is the primary one
-    const plant = plantsData.plants?.[0]
+    if (!plantsResult.back || plantsResult.back.success === false) {
+      throw new Error(`Failed to fetch plants for client ${clientId}: ${plantsResult.back?.msg || 'Unknown error'}`)
+    }
+
+    const plantsData = plantsResult.back?.data || []
+    const totalData = plantsResult.back?.totalData || {}
+
+    // Get the first plant (primary one)
+    const plant = plantsData[0]
 
     if (!plant) {
       throw new Error(`No plants found for client ${clientId}`)
     }
 
-    // Step 3: Get plant details and energy data
-    const plantDetailsResponse = await fetch(
-      `${growattApiUrl}/plants/${plant.plantId}/data`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    )
+    // Parse totals from Growatt
+    const totalTodayEnergy = parseFloat(totalData.todayEnergySum?.replace(/[^\d.-]/g, '')) || 0
+    let totalEnergy = parseFloat(totalData.totalEnergySum?.replace(/[^\d.-]/g, '')) || 0
 
-    if (!plantDetailsResponse.ok) {
-      throw new Error(`Failed to fetch plant details for client ${clientId}`)
+    // Convert MWh to kWh if needed
+    if (totalData.totalEnergySum?.includes('MWh')) {
+      totalEnergy = totalEnergy * 1000
     }
 
-    const plantDetails = await plantDetailsResponse.json()
+    const co2Saved = parseFloat(totalData.CO2Sum?.replace(/[^\d.-]/g, '')) || 0
 
-    // Map Growatt response to our interface
+    // Map to our interface
     return {
-      plantId: plant.plantId,
-      plantName: plant.plantName,
-      currentPower: plantDetails.currentPower || 0,
-      dailyEnergy: plantDetails.todayEnergy || 0,
-      monthlyEnergy: plantDetails.monthEnergy || 0,
-      yearlyEnergy: plantDetails.yearEnergy || 0,
-      totalEnergy: plantDetails.totalEnergy || 0,
-      co2Reduction: plantDetails.co2Reduction || 0,
-      revenue: plantDetails.revenue || 0,
-      status: plantDetails.status || 'offline',
+      plantId: plant.plantId || plant.id,
+      plantName: plant.plantName || 'Planta Sin Nombre',
+      currentPower: parseFloat(plant.currentPower) || 0,
+      dailyEnergy: totalTodayEnergy,
+      monthlyEnergy: parseFloat(plant.monthEnergy) || 0,
+      yearlyEnergy: parseFloat(plant.yearEnergy) || 0,
+      totalEnergy: totalEnergy,
+      co2Reduction: co2Saved,
+      revenue: parseFloat(plant.revenue) || 0,
+      status: plant.status === '1' ? 'online' : 'offline',
     }
   } catch (error) {
     console.error(`Error fetching Growatt data for client ${clientId}:`, error)
@@ -234,7 +287,9 @@ export async function GET(request: NextRequest) {
       where: {
         AND: [
           { growattUsername: { not: null } },
+          { growattUsername: { not: '' } },
           { growattPassword: { not: null } },
+          { growattPassword: { not: '' } },
           { isActive: true },
         ]
       },
