@@ -1,5 +1,6 @@
 import { Navbar } from '@/components/layout/navbar'
 import { Sidebar } from '@/components/layout/sidebar'
+import { PushNotificationManager } from '@/components/push-notification-manager'
 
 export default function DashboardLayout({
   children,
@@ -17,6 +18,7 @@ export default function DashboardLayout({
           </div>
         </main>
       </div>
+      <PushNotificationManager />
     </div>
   )
 }
