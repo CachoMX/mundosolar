@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generar Iconos PWA - MundoSolar</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .icon-preview {
+            display: inline-block;
+            margin: 10px;
+            text-align: center;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            margin: 5px;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .instructions {
+            background: #f0f9ff;
+            border: 1px solid #3b82f6;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌞 Generador de Iconos PWA - MundoSolar</h1>
+
+    <div class="instructions">
+        <h3>Instrucciones:</h3>
+        <ol>
+            <li>Haz clic en "Generar Todos los Iconos"</li>
+            <li>Se generarán iconos con el logo de MundoSolar</li>
+            <li>Haz clic en cada botón "Descargar" para guardar cada icono</li>
+            <li>Guarda todos en la carpeta <code>public/icons/</code></li>
+        </ol>
+    </div>
+
+    <button onclick="generateAllIcons()">Generar Todos los Iconos</button>
+    <button onclick="downloadAll()">Descargar Todos (Automático)</button>
+
+    <div id="icons-container"></div>
+
+    <script>
+        const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+        const canvases = {};
+
+        function generateIcon(size) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Background gradient
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#3b82f6');
+            gradient.addColorStop(1, '#1d4ed8');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+
+            // Sun icon
+            ctx.fillStyle = '#fbbf24';
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const sunRadius = size * 0.25;
+
+            // Sun circle
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, sunRadius, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Sun rays
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = size * 0.04;
+            const rayLength = size * 0.15;
+            for (let i = 0; i < 8; i++) {
+                const angle = (Math.PI * 2 * i) / 8;
+                const startX = centerX + Math.cos(angle) * (sunRadius + size * 0.05);
+                const startY = centerY + Math.sin(angle) * (sunRadius + size * 0.05);
+                const endX = centerX + Math.cos(angle) * (sunRadius + size * 0.05 + rayLength);
+                const endY = centerY + Math.sin(angle) * (sunRadius + size * 0.05 + rayLength);
+
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+            }
+
+            // Text "MS" if size >= 192
+            if (size >= 192) {
+                ctx.fillStyle = '#1e40af';
+                ctx.font = `bold ${size * 0.2}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('MS', centerX, centerY);
+            }
+
+            return canvas;
+        }
+
+        function generateAllIcons() {
+            const container = document.getElementById('icons-container');
+            container.innerHTML = '<h2>Iconos Generados:</h2>';
+
+            sizes.forEach(size => {
+                const canvas = generateIcon(size);
+                canvases[size] = canvas;
+
+                const div = document.createElement('div');
+                div.className = 'icon-preview';
+                div.innerHTML = `
+                    <div>${size}x${size}</div>
+                    <div>${canvas.outerHTML}</div>
+                    <button onclick="downloadIcon(${size})">Descargar</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function downloadIcon(size) {
+            const canvas = canvases[size];
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `icon-${size}x${size}.png`;
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+
+        function downloadAll() {
+            if (Object.keys(canvases).length === 0) {
+                generateAllIcons();
+                setTimeout(downloadAll, 500);
+                return;
+            }
+
+            sizes.forEach((size, index) => {
+                setTimeout(() => downloadIcon(size), index * 200);
+            });
+        }
+
+        // Auto-generate on load
+        window.onload = generateAllIcons;
+    </script>
+</body>
+</html>
