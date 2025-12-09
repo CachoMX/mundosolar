@@ -312,46 +312,61 @@ export async function GET(request: NextRequest) {
       errors: [] as { clientId: string; error: string }[],
     }
 
-    // Process each client sequentially to avoid rate limiting
-    for (const client of clientsWithCredentials) {
-      try {
-        console.log(`[Cron] Fetching data for client ${client.id}`)
+    // Process in batches of 5 clients in parallel to speed up while respecting rate limits
+    const BATCH_SIZE = 5
+    const BATCH_DELAY = 3000 // 3 seconds between batches
 
-        const data = await fetchGrowattDataForClient(
-          client.id,
-          client.growattUsername!,
-          client.growattPassword!
-        )
+    for (let i = 0; i < clientsWithCredentials.length; i += BATCH_SIZE) {
+      const batch = clientsWithCredentials.slice(i, i + BATCH_SIZE)
 
-        if (data) {
-          await cacheGrowattData(client.id, data)
-          results.success++
-          console.log(`[Cron] ✓ Successfully cached data for client ${client.id}`)
-        } else {
-          await cacheGrowattData(
-            client.id,
-            null,
-            'Failed to fetch data from Growatt API'
-          )
-          results.failed++
-          results.errors.push({
-            clientId: client.id,
-            error: 'Failed to fetch data from Growatt API',
-          })
-          console.log(`[Cron] ✗ Failed to fetch data for client ${client.id}`)
-        }
+      console.log(`[Cron] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(clientsWithCredentials.length / BATCH_SIZE)} (${batch.length} clients)`)
 
-        // Add a small delay between requests to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 2000))
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        await cacheGrowattData(client.id, null, errorMessage)
-        results.failed++
-        results.errors.push({
-          clientId: client.id,
-          error: errorMessage,
+      // Process batch in parallel
+      await Promise.all(
+        batch.map(async (client) => {
+          try {
+            console.log(`[Cron] Fetching data for client ${client.firstName} ${client.lastName}`)
+
+            const data = await fetchGrowattDataForClient(
+              client.id,
+              client.growattUsername!,
+              client.growattPassword!
+            )
+
+            if (data) {
+              await cacheGrowattData(client.id, data)
+              results.success++
+              console.log(`[Cron] ✓ Successfully cached data for ${client.firstName} ${client.lastName}`)
+            } else {
+              await cacheGrowattData(
+                client.id,
+                null,
+                'Failed to fetch data from Growatt API'
+              )
+              results.failed++
+              results.errors.push({
+                clientId: client.id,
+                error: 'Failed to fetch data from Growatt API',
+              })
+              console.log(`[Cron] ✗ Failed to fetch data for ${client.firstName} ${client.lastName}`)
+            }
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+            await cacheGrowattData(client.id, null, errorMessage)
+            results.failed++
+            results.errors.push({
+              clientId: client.id,
+              error: errorMessage,
+            })
+            console.error(`[Cron] Error processing client ${client.firstName} ${client.lastName}:`, error)
+          }
         })
-        console.error(`[Cron] Error processing client ${client.id}:`, error)
+      )
+
+      // Wait between batches to avoid overwhelming Growatt API
+      if (i + BATCH_SIZE < clientsWithCredentials.length) {
+        console.log(`[Cron] Waiting ${BATCH_DELAY}ms before next batch...`)
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY))
       }
     }
 
