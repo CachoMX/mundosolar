@@ -1,0 +1,6 @@
+mundosolar-app
+node_modules
+.git
+.env.local
+.DS_Store
+*.log
