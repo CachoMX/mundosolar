@@ -120,6 +120,7 @@ model Client {
   maintenanceRecords MaintenanceRecord[]
   solarSystems     SolarSystem[]
   growattCredentials GrowattCredentials[]
+  growattHistory   GrowattDailyHistory[]
 
   @@map("clients")
 }
@@ -505,7 +506,7 @@ model EnergyReading {
   @@map("energy_readings")
 }
 
-// Cached Growatt Data for faster dashboard loading
+// Cached Growatt Data for faster dashboard loading (current day only)
 model GrowattDataCache {
   id               String   @id @default(cuid())
   clientId         String
@@ -544,6 +545,40 @@ model GrowattDataCache {
   @@index([expiresAt])
   @@index([isStale])
   @@map("growatt_data_cache")
+}
+
+// Daily historical data from Growatt for charts and analytics
+model GrowattDailyHistory {
+  id               String   @id @default(cuid())
+  clientId         String
+  date             DateTime @db.Date // Date of the reading (no time component)
+  plantName        String?
+  plantId          String?
+
+  // Energy data for this specific day
+  dailyGeneration  Decimal  @db.Decimal(10, 3) // kWh generated this day
+  monthlyGeneration Decimal? @db.Decimal(12, 3) // kWh this month (cumulative at time of reading)
+  yearlyGeneration Decimal? @db.Decimal(12, 3) // kWh this year (cumulative at time of reading)
+  totalGeneration  Decimal? @db.Decimal(12, 3) // kWh lifetime (cumulative at time of reading)
+
+  // Snapshot metrics
+  currentPower     Decimal? @db.Decimal(8, 3)  // kW at time of reading
+  co2Reduction     Decimal? @db.Decimal(10, 3) // kg CO2 (cumulative)
+  revenue          Decimal? @db.Decimal(10, 2) // Mexican Pesos (cumulative)
+
+  // Status at time of reading
+  status           String?  // online, offline, error
+
+  // Metadata
+  recordedAt       DateTime @default(now()) // When this record was created
+  createdAt        DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, date]) // One record per client per day
+  @@index([clientId, date])
+  @@index([date])
+  @@map("growatt_daily_history")
 }
 
 // System Configuration

@@ -181,7 +181,7 @@ async function fetchGrowattDataForClient(
 }
 
 /**
- * Cache Growatt data in the database
+ * Cache Growatt data in the database AND save daily history
  */
 async function cacheGrowattData(
   clientId: string,
@@ -189,10 +189,11 @@ async function cacheGrowattData(
   error?: string
 ) {
   const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()) // Strip time for date comparison
   const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000) // 24 hours
 
   if (data) {
-    // Successfully fetched data - cache it
+    // 1. Update cache (for fast dashboard loading)
     await prisma.growattDataCache.upsert({
       where: { clientId },
       create: {
@@ -235,8 +236,48 @@ async function cacheGrowattData(
         lastErrorAt: null,
       },
     })
+
+    // 2. Save daily history (for charts and analytics)
+    // Use upsert to handle multiple runs on the same day
+    await prisma.growattDailyHistory.upsert({
+      where: {
+        clientId_date: {
+          clientId,
+          date: today,
+        },
+      },
+      create: {
+        clientId,
+        date: today,
+        plantId: data.plantId,
+        plantName: data.plantName,
+        dailyGeneration: data.dailyEnergy,
+        monthlyGeneration: data.monthlyEnergy,
+        yearlyGeneration: data.yearlyEnergy,
+        totalGeneration: data.totalEnergy,
+        currentPower: data.currentPower,
+        co2Reduction: data.co2Reduction,
+        revenue: data.revenue,
+        status: data.status,
+        recordedAt: now,
+      },
+      update: {
+        // Update if cron runs multiple times on same day
+        plantId: data.plantId,
+        plantName: data.plantName,
+        dailyGeneration: data.dailyEnergy,
+        monthlyGeneration: data.monthlyEnergy,
+        yearlyGeneration: data.yearlyEnergy,
+        totalGeneration: data.totalEnergy,
+        currentPower: data.currentPower,
+        co2Reduction: data.co2Reduction,
+        revenue: data.revenue,
+        status: data.status,
+        recordedAt: now,
+      },
+    })
   } else {
-    // Failed to fetch - update error tracking
+    // Failed to fetch - update error tracking in cache only
     const existing = await prisma.growattDataCache.findUnique({
       where: { clientId },
       select: { errorCount: true },
