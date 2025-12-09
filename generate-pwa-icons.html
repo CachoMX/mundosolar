@@ -125,11 +125,20 @@
 
                 const div = document.createElement('div');
                 div.className = 'icon-preview';
-                div.innerHTML = `
-                    <div>${size}x${size}</div>
-                    <div>${canvas.outerHTML}</div>
-                    <button onclick="downloadIcon(${size})">Descargar</button>
-                `;
+
+                const sizeLabel = document.createElement('div');
+                sizeLabel.textContent = `${size}x${size}`;
+
+                const canvasContainer = document.createElement('div');
+                canvasContainer.appendChild(canvas);
+
+                const downloadBtn = document.createElement('button');
+                downloadBtn.textContent = 'Descargar';
+                downloadBtn.onclick = () => downloadIcon(size);
+
+                div.appendChild(sizeLabel);
+                div.appendChild(canvasContainer);
+                div.appendChild(downloadBtn);
                 container.appendChild(div);
             });
         }
