@@ -111,7 +111,7 @@ export const LoginScreen = () => {
             placeholderTextColor={Colors.textLight}
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
+            secureTextEntry={true}
             autoCapitalize="none"
             editable={!loading}
           />
