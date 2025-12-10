@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, Sun, AlertCircle } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
+import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 
 // Helper to detect if input is email or phone
@@ -93,10 +94,12 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
-            <img
+            <Image
               src="/assets/logos/logo.svg"
               alt="MundoSolar Logo"
-              className="h-16 w-auto"
+              width={200}
+              height={75}
+              priority
             />
           </div>
           <div className="text-center">

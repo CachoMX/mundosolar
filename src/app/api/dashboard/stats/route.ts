@@ -85,11 +85,22 @@ export async function GET() {
       }
     })
 
-    // Get recent maintenance
+    // Get upcoming maintenance (scheduled in the future, not completed/cancelled)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
     const recentMaintenance = await prisma.maintenanceRecord.findMany({
+      where: {
+        scheduledDate: {
+          gte: today
+        },
+        status: {
+          in: ['SCHEDULED', 'IN_PROGRESS', 'PENDING_APPROVAL']
+        }
+      },
       take: 5,
       orderBy: {
-        scheduledDate: 'desc'
+        scheduledDate: 'asc'
       },
       include: {
         client: {
