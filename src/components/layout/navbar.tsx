@@ -26,6 +26,11 @@ interface Notification {
   type: string
   read: boolean
   createdAt: string
+  data?: {
+    maintenanceId?: string
+    clientId?: string
+    status?: string
+  }
 }
 
 interface NavbarProps {
@@ -51,12 +56,17 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
           if (result.success) {
             setUserName(`${result.client.firstName} ${result.client.lastName}`)
             setUserEmail(result.client.email)
+            loadNotifications()
           }
         } catch (err) {
           console.error('Error getting client session:', err)
         }
       }
       getClientSession()
+
+      // Poll for new notifications every 30 seconds
+      const interval = setInterval(loadNotifications, 30000)
+      return () => clearInterval(interval)
     } else {
       // Get admin/staff info from Supabase
       const getUser = async () => {
@@ -77,7 +87,8 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
 
   const loadNotifications = async () => {
     try {
-      const response = await fetch('/api/notifications')
+      const apiPath = isClientPortal ? '/api/cliente/notifications' : '/api/notifications'
+      const response = await fetch(apiPath)
       const data = await response.json()
 
       if (data.success) {
@@ -91,7 +102,10 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const response = await fetch(`/api/notifications/${notificationId}/read`, {
+      const apiPath = isClientPortal
+        ? `/api/cliente/notifications/${notificationId}/read`
+        : `/api/notifications/${notificationId}/read`
+      const response = await fetch(apiPath, {
         method: 'PATCH',
       })
 
@@ -105,7 +119,10 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
 
   const markAllAsRead = async () => {
     try {
-      const response = await fetch('/api/notifications/mark-all-read', {
+      const apiPath = isClientPortal
+        ? '/api/cliente/notifications/mark-all-read'
+        : '/api/notifications/mark-all-read'
+      const response = await fetch(apiPath, {
         method: 'POST',
       })
 
@@ -114,6 +131,24 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
       }
     } catch (error) {
       console.error('Error marking all as read:', error)
+    }
+  }
+
+  // Handle notification click - navigate to the relevant page
+  const handleNotificationClick = (notification: Notification) => {
+    if (!notification.read) {
+      markAsRead(notification.id)
+    }
+
+    // Navigate based on notification type and data
+    if (notification.data?.maintenanceId) {
+      if (isClientPortal) {
+        // Client goes to their maintenance page
+        router.push('/cliente/mantenimientos')
+      } else {
+        // Admin goes to specific maintenance detail
+        router.push(`/maintenance/${notification.data.maintenanceId}`)
+      }
     }
   }
 
@@ -218,11 +253,7 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
                       className={`flex-col items-start p-3 cursor-pointer ${
                         !notification.read ? 'bg-blue-50' : ''
                       }`}
-                      onClick={() => {
-                        if (!notification.read) {
-                          markAsRead(notification.id)
-                        }
-                      }}
+                      onClick={() => handleNotificationClick(notification)}
                     >
                       <div className="flex items-start justify-between w-full gap-2">
                         <div className="flex-1">

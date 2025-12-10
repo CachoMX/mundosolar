@@ -6,7 +6,7 @@ import { cookies } from 'next/headers'
 // POST /api/notifications/mark-all-read - Mark all user notifications as read
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -24,10 +24,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Find the Prisma user by email to get the correct ID
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email! },
+      select: { id: true }
+    })
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
     // Mark all unread notifications as read
     const result = await prisma.notification.updateMany({
       where: {
-        userId: session.user.id,
+        userId: user.id,
         read: false
       },
       data: {

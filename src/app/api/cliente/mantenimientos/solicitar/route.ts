@@ -79,6 +79,12 @@ export async function POST(request: NextRequest) {
         : new Date(`${preferredDate}T12:00:00.000Z`)
     }
 
+    // Get client info for notification
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+      select: { firstName: true, lastName: true }
+    })
+
     const maintenanceRequest = await prisma.maintenanceRecord.create({
       data: {
         clientId,
@@ -99,6 +105,35 @@ export async function POST(request: NextRequest) {
         }
       }
     })
+
+    // Notify all ADMIN users about the new maintenance request
+    try {
+      const admins = await prisma.user.findMany({
+        where: { role: 'ADMIN', isActive: true },
+        select: { id: true }
+      })
+
+      if (admins.length > 0) {
+        const clientName = client ? `${client.firstName} ${client.lastName}` : 'Un cliente'
+
+        await prisma.notification.createMany({
+          data: admins.map(admin => ({
+            userId: admin.id,
+            type: 'maintenance_request',
+            title: 'Nueva Solicitud de Mantenimiento',
+            message: `${clientName} ha solicitado un mantenimiento: ${title}`,
+            data: {
+              maintenanceId: maintenanceRequest.id,
+              clientId: clientId,
+              type: type
+            }
+          }))
+        })
+      }
+    } catch (notifError) {
+      // Log but don't fail the request if notification creation fails
+      console.warn('Could not create notifications for admins:', notifError)
+    }
 
     return NextResponse.json({
       success: true,

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Zap, Sun, Battery, TrendingUp, Loader2, RefreshCw, AlertCircle, Users, User, Settings, LineChart } from 'lucide-react'
+import { Plus, Zap, Sun, Battery, TrendingUp, Loader2, RefreshCw, AlertCircle, Users, User, Settings, LineChart, Clock } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ClientHistoryModal } from '@/components/client-history-modal'
 
@@ -57,9 +57,10 @@ interface ClientSolarSystem {
 interface ClientGrowattData {
   clientInfo: ClientSolarSystem
   growattData: GrowattData | null
-  lastUpdated: string
-  status: 'loading' | 'success' | 'error'
+  lastUpdated: string | null
+  status: 'loading' | 'success' | 'error' | 'stale' | 'no_cache'
   error?: string
+  cacheAge?: number | null
 }
 
 export default function SolarSystemsPage() {
@@ -77,6 +78,10 @@ export default function SolarSystemsPage() {
   // History modal state
   const [historyModalOpen, setHistoryModalOpen] = useState(false)
   const [selectedClient, setSelectedClient] = useState<{ id: string, name: string } | null>(null)
+
+  // Last sync timestamp
+  const [lastSync, setLastSync] = useState<string | null>(null)
+  const [syncingManually, setSyncingManually] = useState(false)
 
   const fetchGrowattData = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -189,97 +194,49 @@ export default function SolarSystemsPage() {
     setClientsError(null)
 
     try {
-      // Fetch all clients with Growatt credentials
-      const clientsResponse = await fetch('/api/admin/solar-systems')
-      
-      if (!clientsResponse.ok) {
+      // Fetch cached data for all clients (fast, from database)
+      const response = await fetch('/api/admin/solar-systems/cached')
+
+      if (!response.ok) {
         throw new Error('Error al obtener sistemas de clientes')
       }
 
-      const clientsResult = await clientsResponse.json()
-      
-      if (!clientsResult.success) {
-        throw new Error(clientsResult.error || 'Error al obtener sistemas de clientes')
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Error al obtener sistemas de clientes')
       }
 
-      // Initialize client systems data
-      const initialClientData: ClientGrowattData[] = clientsResult.data.map((client: ClientSolarSystem) => ({
-        clientInfo: client,
-        growattData: null,
-        lastUpdated: new Date().toISOString(),
-        status: 'loading' as const
-      }))
-
-      setClientSystems(initialClientData)
-
-      // Fetch Growatt data for each client
-      for (let i = 0; i < clientsResult.data.length; i++) {
-        const client = clientsResult.data[i]
-        
-        try {
-          console.log(`🔄 Fetching Growatt data for ${client.firstName} (${client.growattUsername})`)
-          
-          const growattResponse = await fetch('/api/integrations/growatt/plants', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              username: client.growattUsername,
-              password: client.growattPassword
-            })
-          })
-
-          if (growattResponse.ok) {
-            const growattResult = await growattResponse.json()
-            
-            setClientSystems(prevData => 
-              prevData.map((item, index) => 
-                index === i 
-                  ? {
-                      ...item,
-                      growattData: growattResult.success ? growattResult.data : null,
-                      status: growattResult.success ? 'success' : 'error',
-                      error: growattResult.success ? undefined : growattResult.error,
-                      lastUpdated: new Date().toISOString()
-                    }
-                  : item
-              )
-            )
-          } else {
-            setClientSystems(prevData => 
-              prevData.map((item, index) => 
-                index === i 
-                  ? {
-                      ...item,
-                      status: 'error',
-                      error: 'Error de conexión con Growatt',
-                      lastUpdated: new Date().toISOString()
-                    }
-                  : item
-              )
-            )
-          }
-        } catch (clientError) {
-          console.error(`Error fetching Growatt data for client ${client.firstName}:`, clientError)
-          setClientSystems(prevData => 
-            prevData.map((item, index) => 
-              index === i 
-                ? {
-                    ...item,
-                    status: 'error',
-                    error: 'Error al conectar con Growatt',
-                    lastUpdated: new Date().toISOString()
-                  }
-                : item
-            )
-          )
-        }
-      }
+      // Data is already in the expected format from the API
+      setClientSystems(result.data)
+      setLastSync(result.lastSync)
 
     } catch (err) {
       console.error('Error fetching client systems:', err)
       setClientsError(err instanceof Error ? err.message : 'Error desconocido')
     } finally {
       setClientsLoading(false)
+    }
+  }
+
+  // Manual sync - triggers the cron job to refresh all data from Growatt
+  const triggerManualSync = async () => {
+    setSyncingManually(true)
+    try {
+      const response = await fetch('/api/cron/sync-growatt-data', {
+        method: 'POST'
+      })
+
+      if (response.ok) {
+        // Refresh the cached data after sync
+        await fetchAllClientSystems()
+      } else {
+        console.error('Failed to trigger manual sync')
+      }
+    } catch (err) {
+      console.error('Error triggering manual sync:', err)
+    } finally {
+      setSyncingManually(false)
     }
   }
 
@@ -344,11 +301,56 @@ export default function SolarSystemsPage() {
     return null // No alert needed
   }
 
+  // Format last sync time
+  const formatLastSync = (isoString: string | null) => {
+    if (!isoString) return 'Nunca sincronizado'
+
+    const syncDate = new Date(isoString)
+    const now = new Date()
+    const diffMs = now.getTime() - syncDate.getTime()
+    const diffMinutes = Math.floor(diffMs / (1000 * 60))
+    const diffHours = Math.floor(diffMinutes / 60)
+
+    if (diffMinutes < 1) return 'Hace menos de 1 minuto'
+    if (diffMinutes < 60) return `Hace ${diffMinutes} minuto${diffMinutes > 1 ? 's' : ''}`
+    if (diffHours < 24) return `Hace ${diffHours} hora${diffHours > 1 ? 's' : ''}`
+
+    return syncDate.toLocaleDateString('es-MX', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
   return (
     <div className="flex-1 space-y-4 p-4 pt-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Sistemas Solares</h2>
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Sistemas Solares</h2>
+          {activeTab === 'todos-sistemas' && lastSync && (
+            <p className="text-sm text-muted-foreground flex items-center mt-1">
+              <Clock className="h-3 w-3 mr-1" />
+              Última sincronización: {formatLastSync(lastSync)}
+            </p>
+          )}
+        </div>
         <div className="flex space-x-2">
+          {activeTab === 'todos-sistemas' && (
+            <Button
+              variant="outline"
+              onClick={triggerManualSync}
+              disabled={syncingManually}
+              title="Sincronizar datos desde Growatt"
+            >
+              {syncingManually ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              {syncingManually ? 'Sincronizando...' : 'Sincronizar'}
+            </Button>
+          )}
           <Button variant="outline" onClick={handleRefresh} disabled={(activeTab === 'mi-sistema' ? refreshing : clientsLoading)}>
             {(activeTab === 'mi-sistema' ? refreshing : clientsLoading) ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -693,11 +695,22 @@ export default function SolarSystemsPage() {
                       <div className="flex items-center space-x-3">
                         <Badge variant={
                           clientData.status === 'success' ? 'default' :
-                          clientData.status === 'loading' ? 'secondary' : 'destructive'
+                          clientData.status === 'stale' ? 'secondary' :
+                          clientData.status === 'loading' ? 'secondary' :
+                          clientData.status === 'no_cache' ? 'outline' : 'destructive'
                         }>
-                          {clientData.status === 'success' ? 'Conectado' :
-                           clientData.status === 'loading' ? 'Cargando...' : 'Error'}
+                          {clientData.status === 'success' ? 'Actualizado' :
+                           clientData.status === 'stale' ? 'Datos antiguos' :
+                           clientData.status === 'loading' ? 'Cargando...' :
+                           clientData.status === 'no_cache' ? 'Sin datos' : 'Error'}
                         </Badge>
+                        {clientData.cacheAge !== null && clientData.cacheAge !== undefined && (
+                          <span className="text-xs text-muted-foreground">
+                            {clientData.cacheAge < 60
+                              ? `hace ${clientData.cacheAge}min`
+                              : `hace ${Math.floor(clientData.cacheAge / 60)}h`}
+                          </span>
+                        )}
                         {clientData.clientInfo.expectedDailyGeneration && (
                           <div className="text-right text-sm text-muted-foreground">
                             Esperado: {clientData.clientInfo.expectedDailyGeneration} kWh/día

@@ -1,17 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import { prisma } from '@/lib/prisma'
 
 // GET /api/admin/solar-systems - Fetch all client solar systems (admin only)
 export async function GET(request: NextRequest) {
   try {
-    console.log('🔧 Admin solar systems API called')
-
     // Create Supabase client for server-side authentication
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -33,22 +29,38 @@ export async function GET(request: NextRequest) {
     const { data: { session } } = await supabase.auth.getSession()
 
     if (!session) {
-      console.log('❌ No session found')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    console.log('✅ Session found:', session.user?.email)
+    // Check if requesting solar systems for a specific client
+    const { searchParams } = new URL(request.url)
+    const clientId = searchParams.get('clientId')
 
-    // TODO: Check if user is admin
-    // For now, we'll allow all authenticated users
+    // If clientId is provided, return solar systems for that client only
+    if (clientId) {
+      const solarSystems = await prisma.solarSystem.findMany({
+        where: {
+          clientId: clientId,
+          isActive: true
+        },
+        select: {
+          id: true,
+          systemName: true,
+          capacity: true,
+          installationDate: true,
+          isActive: true,
+          estimatedGeneration: true
+        }
+      })
 
-    // Get all clients with Growatt credentials
-    console.log('🔍 Searching for clients with Growatt credentials...')
-    
-    // Debug: Check total clients first
-    const totalClients = await prisma.client.count()
-    console.log(`🔢 Total clients in database: ${totalClients}`)
-    
+      return NextResponse.json({
+        success: true,
+        data: solarSystems,
+        count: solarSystems.length
+      })
+    }
+
+    // Otherwise, return all clients with Growatt credentials
     const clientsWithGrowatt = await prisma.client.findMany({
       where: {
         AND: [
@@ -91,31 +103,6 @@ export async function GET(request: NextRequest) {
         firstName: 'asc'
       }
     })
-
-    console.log(`📊 Found ${clientsWithGrowatt.length} clients with Growatt credentials`)
-    console.log('👥 Clients:', clientsWithGrowatt.map(c => `${c.firstName} ${c.lastName} (${c.growattUsername})`))
-    
-    // Debug: Also check without the isActive filter
-    const allWithGrowatt = await prisma.client.findMany({
-      where: {
-        AND: [
-          { growattUsername: { not: null } },
-          { growattUsername: { not: '' } }
-        ]
-      },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        growattUsername: true,
-        isActive: true
-      }
-    })
-    
-    console.log(`🔍 All clients with Growatt (including inactive): ${allWithGrowatt.length}`)
-    console.log('📝 Sample clients:', allWithGrowatt.slice(0, 5).map(c => 
-      `${c.firstName} ${c.lastName} (${c.growattUsername}) - Active: ${c.isActive}`
-    ))
 
     return NextResponse.json({
       success: true,

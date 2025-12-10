@@ -42,10 +42,11 @@ const maintenanceSchema = z.object({
   scheduledDate: z.date({
     required_error: 'Fecha programada es requerida',
   }),
+  scheduledTime: z.string().min(1, 'Hora programada es requerida'),
   title: z.string().min(3, 'Título debe tener al menos 3 caracteres'),
   description: z.string().optional(),
   privateNotes: z.string().optional(),
-  technicianIds: z.array(z.string()).min(1, 'Asigna al menos un técnico'),
+  technicianIds: z.array(z.string()).optional(),
 })
 
 type MaintenanceFormData = z.infer<typeof maintenanceSchema>
@@ -102,6 +103,7 @@ export function MaintenanceFormModal({
     defaultValues: {
       type: 'PREVENTIVE',
       priority: 'SCHEDULED',
+      scheduledTime: '09:00',
       technicianIds: [],
     },
   })
@@ -134,7 +136,12 @@ export function MaintenanceFormModal({
       setValue('solarSystemId', editData.solarSystemId || '')
       setValue('type', editData.type)
       setValue('priority', editData.priority)
-      setValue('scheduledDate', new Date(editData.scheduledDate))
+      const editDate = new Date(editData.scheduledDate)
+      setValue('scheduledDate', editDate)
+      // Extract time from the scheduled date
+      const hours = String(editDate.getHours()).padStart(2, '0')
+      const minutes = String(editDate.getMinutes()).padStart(2, '0')
+      setValue('scheduledTime', `${hours}:${minutes}`)
       setValue('title', editData.title)
       setValue('description', editData.description || '')
       setValue('privateNotes', editData.privateNotes || '')
@@ -149,23 +156,12 @@ export function MaintenanceFormModal({
     try {
       setLoadingData(true)
 
-      // Load clients with solar systems
+      // Load clients (solar systems are now included in the response)
       const clientsRes = await fetch('/api/clients')
       const clientsData = await clientsRes.json()
 
       if (clientsData.success) {
-        // Load solar systems for each client
-        const clientsWithSystems = await Promise.all(
-          clientsData.data.map(async (client: any) => {
-            const systemsRes = await fetch(`/api/admin/solar-systems?clientId=${client.id}`)
-            const systemsData = await systemsRes.json()
-            return {
-              ...client,
-              solarSystems: systemsData.success ? systemsData.data : [],
-            }
-          })
-        )
-        setClients(clientsWithSystems)
+        setClients(clientsData.data)
       }
 
       // Load technicians
@@ -195,12 +191,11 @@ export function MaintenanceFormModal({
     try {
       setLoading(true)
 
-      // Format date to preserve the selected date without timezone conversion
-      // This ensures the date displays correctly on the calendar
+      // Format date with selected time
       const year = data.scheduledDate.getFullYear()
       const month = String(data.scheduledDate.getMonth() + 1).padStart(2, '0')
       const day = String(data.scheduledDate.getDate()).padStart(2, '0')
-      const scheduledDateStr = `${year}-${month}-${day}T12:00:00.000Z`
+      const scheduledDateStr = `${year}-${month}-${day}T${data.scheduledTime}:00.000Z`
 
       const payload = {
         ...data,
@@ -354,39 +349,54 @@ export function MaintenanceFormModal({
               </div>
             </div>
 
-            {/* Scheduled Date */}
-            <div className="space-y-2">
-              <Label>Fecha Programada *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      'w-full justify-start text-left font-normal',
-                      !scheduledDate && 'text-muted-foreground'
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {scheduledDate ? (
-                      format(scheduledDate, 'PPP', { locale: es })
-                    ) : (
-                      <span>Selecciona una fecha</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={scheduledDate}
-                    onSelect={(date) => date && setValue('scheduledDate', date)}
-                    initialFocus
-                    locale={es}
-                  />
-                </PopoverContent>
-              </Popover>
-              {errors.scheduledDate && (
-                <p className="text-sm text-red-500">{errors.scheduledDate.message}</p>
-              )}
+            {/* Scheduled Date and Time */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Fecha Programada *</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        'w-full justify-start text-left font-normal',
+                        !scheduledDate && 'text-muted-foreground'
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {scheduledDate ? (
+                        format(scheduledDate, 'PPP', { locale: es })
+                      ) : (
+                        <span>Selecciona una fecha</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={scheduledDate}
+                      onSelect={(date) => date && setValue('scheduledDate', date)}
+                      initialFocus
+                      locale={es}
+                    />
+                  </PopoverContent>
+                </Popover>
+                {errors.scheduledDate && (
+                  <p className="text-sm text-red-500">{errors.scheduledDate.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="scheduledTime">Hora *</Label>
+                <Input
+                  id="scheduledTime"
+                  type="time"
+                  {...register('scheduledTime')}
+                  className="w-full"
+                />
+                {errors.scheduledTime && (
+                  <p className="text-sm text-red-500">{errors.scheduledTime.message}</p>
+                )}
+              </div>
             </div>
 
             {/* Title */}
@@ -426,28 +436,37 @@ export function MaintenanceFormModal({
 
             {/* Technician Assignment */}
             <div className="space-y-2">
-              <Label>Técnicos Asignados *</Label>
+              <Label>Técnicos Asignados (opcional)</Label>
               <div className="border rounded-lg p-4 space-y-2 max-h-48 overflow-y-auto">
-                {technicians.map((tech) => (
-                  <div
-                    key={tech.id}
-                    className={cn(
-                      'flex items-center justify-between p-2 rounded cursor-pointer hover:bg-gray-50',
-                      selectedTechnicians.includes(tech.id) && 'bg-blue-50'
-                    )}
-                    onClick={() => toggleTechnician(tech.id)}
-                  >
-                    <div>
-                      <p className="font-medium">{tech.name}</p>
-                      <p className="text-sm text-gray-500">
-                        {tech.employeeId} - {tech.email}
-                      </p>
-                    </div>
-                    {selectedTechnicians.includes(tech.id) && (
-                      <Badge variant="default">Asignado</Badge>
-                    )}
+                {technicians.length === 0 ? (
+                  <div className="text-center py-4 text-muted-foreground">
+                    <p className="text-sm">No hay técnicos registrados.</p>
+                    <p className="text-xs mt-1">
+                      Para agregar técnicos, crea usuarios con rol TECHNICIAN en la configuración.
+                    </p>
                   </div>
-                ))}
+                ) : (
+                  technicians.map((tech) => (
+                    <div
+                      key={tech.id}
+                      className={cn(
+                        'flex items-center justify-between p-2 rounded cursor-pointer hover:bg-gray-50',
+                        selectedTechnicians.includes(tech.id) && 'bg-blue-50'
+                      )}
+                      onClick={() => toggleTechnician(tech.id)}
+                    >
+                      <div>
+                        <p className="font-medium">{tech.name}</p>
+                        <p className="text-sm text-gray-500">
+                          {tech.employeeId} - {tech.email}
+                        </p>
+                      </div>
+                      {selectedTechnicians.includes(tech.id) && (
+                        <Badge variant="default">Asignado</Badge>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
               {errors.technicianIds && (
                 <p className="text-sm text-red-500">{errors.technicianIds.message}</p>

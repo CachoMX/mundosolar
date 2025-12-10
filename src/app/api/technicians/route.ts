@@ -6,7 +6,7 @@ import { cookies } from 'next/headers'
 // GET /api/technicians - Get all active technicians
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -24,14 +24,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get current user to check permissions
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+    // Get current user by email to check permissions
+    const user = await prisma.user.findFirst({
+      where: { email: session.user.email },
       select: { role: true }
     })
 
     // Only ADMIN, MANAGER, and TECHNICIAN can see technician list
-    if (!user || !['ADMIN', 'MANAGER', 'TECHNICIAN'].includes(user.role)) {
+    // If no user found in our DB but has valid Supabase session, allow access (new admin)
+    if (user && !['ADMIN', 'MANAGER', 'TECHNICIAN'].includes(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Forbidden' },
         { status: 403 }

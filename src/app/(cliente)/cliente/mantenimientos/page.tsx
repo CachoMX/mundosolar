@@ -34,7 +34,8 @@ import {
   Clock,
   Wrench,
   Loader2,
-  Plus
+  Plus,
+  Trash2
 } from 'lucide-react'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 
@@ -90,6 +91,7 @@ export default function MantenimientosPage() {
   // Rejection modal state
   const [showRejectionModal, setShowRejectionModal] = useState(false)
   const [selectedRejectedEvent, setSelectedRejectedEvent] = useState<CalendarEvent | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Appointment details modal state
   const [showDetailsModal, setShowDetailsModal] = useState(false)
@@ -101,7 +103,8 @@ export default function MantenimientosPage() {
     title: '',
     description: '',
     solarSystemId: '',
-    preferredDate: ''
+    preferredDate: '',
+    preferredTime: '09:00'
   })
 
   useEffect(() => {
@@ -170,7 +173,8 @@ export default function MantenimientosPage() {
       title: '',
       description: '',
       solarSystemId: '',
-      preferredDate: ''
+      preferredDate: '',
+      preferredTime: '09:00'
     })
     setRequestMessage(null)
     setShowRequestModal(true)
@@ -206,6 +210,35 @@ export default function MantenimientosPage() {
     setSelectedRejectedEvent(null)
   }
 
+  const handleDeleteCancelledMaintenance = async () => {
+    if (!selectedRejectedEvent) return
+
+    setDeleting(true)
+    try {
+      const response = await fetch(`/api/cliente/mantenimientos/${selectedRejectedEvent.id}`, {
+        method: 'DELETE',
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        // Also dismiss it from local storage
+        const newDismissed = [...dismissedRejections, selectedRejectedEvent.id]
+        setDismissedRejections(newDismissed)
+        localStorage.setItem('dismissedRejections', JSON.stringify(newDismissed))
+        setShowRejectionModal(false)
+        setSelectedRejectedEvent(null)
+        loadData()
+      } else {
+        alert(result.error || 'Error al eliminar')
+      }
+    } catch (error) {
+      console.error('Error deleting maintenance:', error)
+      alert('Error al eliminar el mantenimiento')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   // Filter out dismissed cancelled events
   const filteredEvents = events.filter(event => {
     // Keep all non-cancelled events
@@ -226,6 +259,14 @@ export default function MantenimientosPage() {
     setSubmitting(true)
 
     try {
+      // Combine date and time if both are provided
+      let preferredDateTime = null
+      if (formData.preferredDate) {
+        preferredDateTime = formData.preferredTime
+          ? `${formData.preferredDate}T${formData.preferredTime}:00.000Z`
+          : `${formData.preferredDate}T12:00:00.000Z`
+      }
+
       const res = await fetch('/api/cliente/mantenimientos/solicitar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -234,7 +275,7 @@ export default function MantenimientosPage() {
           title: formData.title,
           description: formData.description || null,
           solarSystemId: formData.solarSystemId || null,
-          preferredDate: formData.preferredDate || null
+          preferredDate: preferredDateTime
         })
       })
 
@@ -407,15 +448,26 @@ export default function MantenimientosPage() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="preferredDate">Fecha preferida (opcional)</Label>
-                <Input
-                  id="preferredDate"
-                  type="date"
-                  value={formData.preferredDate}
-                  onChange={(e) => setFormData({ ...formData, preferredDate: e.target.value })}
-                  min={new Date().toISOString().split('T')[0]}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="preferredDate">Fecha preferida (opcional)</Label>
+                  <Input
+                    id="preferredDate"
+                    type="date"
+                    value={formData.preferredDate}
+                    onChange={(e) => setFormData({ ...formData, preferredDate: e.target.value })}
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="preferredTime">Hora preferida</Label>
+                  <Input
+                    id="preferredTime"
+                    type="time"
+                    value={formData.preferredTime}
+                    onChange={(e) => setFormData({ ...formData, preferredTime: e.target.value })}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -738,10 +790,29 @@ export default function MantenimientosPage() {
             </p>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button
+              variant="destructive"
+              onClick={handleDeleteCancelledMaintenance}
+              disabled={deleting}
+              className="flex-1"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Eliminar
+                </>
+              )}
+            </Button>
             <Button
               onClick={handleDismissRejection}
-              className="w-full"
+              disabled={deleting}
+              className="flex-1"
             >
               Entendido
             </Button>

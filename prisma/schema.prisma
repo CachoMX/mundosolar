@@ -138,6 +138,7 @@ model Client {
   solarSystems     SolarSystem[]
   growattCredentials GrowattCredentials[]
   growattHistory   GrowattDailyHistory[]
+  notifications    Notification[]
 
   @@map("clients")
 }
@@ -726,10 +727,11 @@ model MaintenanceConfig {
   @@map("maintenance_configs")
 }
 
-// In-App Notifications
+// In-App Notifications (for both Users and Clients)
 model Notification {
   id        String    @id @default(cuid())
-  userId    String
+  userId    String?   // For admin/staff notifications
+  clientId  String?   // For client notifications
   type      String    // "maintenance_scheduled", "maintenance_reminder", "maintenance_approved", etc.
   title     String
   message   String
@@ -738,9 +740,11 @@ model Notification {
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([userId, read])
+  @@index([clientId, read])
   @@index([createdAt])
   @@map("notifications")
 }

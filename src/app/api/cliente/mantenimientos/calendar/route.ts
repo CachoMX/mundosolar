@@ -60,14 +60,28 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Calculate cutoff for showing cancelled events (48 hours ago)
+    const cancelledCutoff = new Date()
+    cancelledCutoff.setHours(cancelledCutoff.getHours() - 48)
+
     // Get client's own maintenances with full details
+    // For CANCELLED status, only show recent ones (within 48 hours)
     const clientMaintenances = await prisma.maintenanceRecord.findMany({
       where: {
         clientId,
         scheduledDate: {
           gte: new Date(start),
           lte: new Date(end)
-        }
+        },
+        OR: [
+          // Non-cancelled events - always show
+          { status: { not: 'CANCELLED' } },
+          // Cancelled events - only show if recently cancelled
+          {
+            status: 'CANCELLED',
+            updatedAt: { gte: cancelledCutoff }
+          }
+        ]
       },
       include: {
         solarSystem: {

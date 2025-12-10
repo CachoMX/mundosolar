@@ -13,6 +13,9 @@ export async function GET(request: NextRequest) {
     }
 
     const clients = await prisma.client.findMany({
+      include: {
+        solarSystems: true
+      },
       orderBy: {
         createdAt: 'desc'
       }

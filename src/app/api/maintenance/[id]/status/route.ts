@@ -125,34 +125,81 @@ export async function PATCH(
         break
     }
 
-    // Try to create notification for client (may fail if client doesn't have a user account)
+    // Create notification for client using clientId
     if (notificationMessage) {
       try {
-        // First check if client has a linked user account
-        const clientUser = await prisma.user.findFirst({
-          where: { email: maintenance.client.email },
-          select: { id: true }
-        })
-
-        if (clientUser) {
-          await prisma.notification.create({
+        await prisma.notification.create({
+          data: {
+            clientId: maintenance.client.id,
+            type: `maintenance_${status.toLowerCase()}`,
+            title: 'Actualización de Mantenimiento',
+            message: notificationMessage,
             data: {
-              userId: clientUser.id,
-              type: `maintenance_${status.toLowerCase()}`,
-              title: 'Actualización de Mantenimiento',
-              message: notificationMessage,
-              data: {
-                maintenanceId: maintenance.id,
-                status: status
-              }
+              maintenanceId: maintenance.id,
+              status: status
             }
-          })
-        }
-        // If no user account exists, skip notification (client will see status change in their portal)
+          }
+        })
       } catch (notifError) {
         // Log but don't fail the request if notification creation fails
         console.warn('Could not create notification for client:', notifError)
       }
+    }
+
+    // Notify all ADMIN users about the status change
+    try {
+      const admins = await prisma.user.findMany({
+        where: {
+          role: 'ADMIN',
+          isActive: true,
+          id: { not: user.id } // Exclude the admin who made the change
+        },
+        select: { id: true }
+      })
+
+      if (admins.length > 0) {
+        let adminNotificationTitle = ''
+        let adminNotificationMessage = ''
+        const clientName = `${maintenance.client.firstName} ${maintenance.client.lastName}`
+
+        switch (status) {
+          case 'SCHEDULED':
+            adminNotificationTitle = 'Mantenimiento Aprobado'
+            adminNotificationMessage = `El mantenimiento "${maintenance.title}" de ${clientName} ha sido aprobado y programado`
+            break
+          case 'IN_PROGRESS':
+            adminNotificationTitle = 'Mantenimiento en Progreso'
+            adminNotificationMessage = `El mantenimiento "${maintenance.title}" de ${clientName} está en progreso`
+            break
+          case 'COMPLETED':
+            adminNotificationTitle = 'Mantenimiento Completado'
+            adminNotificationMessage = `El mantenimiento "${maintenance.title}" de ${clientName} ha sido completado`
+            break
+          case 'CANCELLED':
+            adminNotificationTitle = 'Solicitud Rechazada'
+            adminNotificationMessage = `La solicitud de mantenimiento "${maintenance.title}" de ${clientName} ha sido rechazada`
+            break
+        }
+
+        if (adminNotificationTitle) {
+          await prisma.notification.createMany({
+            data: admins.map(admin => ({
+              userId: admin.id,
+              type: `maintenance_${status.toLowerCase()}`,
+              title: adminNotificationTitle,
+              message: adminNotificationMessage,
+              data: {
+                maintenanceId: maintenance.id,
+                clientId: maintenance.client.id,
+                status: status
+              }
+            }))
+          })
+        }
+      }
+    } catch (adminNotifError) {
+      // Log but don't fail the request if notification creation fails
+      console.warn('Could not create notifications for admins:', adminNotifError)
     }
 
     return NextResponse.json({

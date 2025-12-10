@@ -35,16 +35,26 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - Network first, falling back to cache
 self.addEventListener('fetch', (event) => {
+  // Skip non-http(s) requests (chrome-extension, etc.)
+  if (!event.request.url.startsWith('http')) {
+    return
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Clone the response
+        // Only cache valid responses from same origin
+        if (!response || response.status !== 200 || response.type !== 'basic') {
+          return response
+        }
+
         const responseToCache = response.clone()
 
         caches.open(CACHE_NAME)
           .then((cache) => {
             cache.put(event.request, responseToCache)
           })
+          .catch(() => {})
 
         return response
       })
@@ -54,7 +64,6 @@ self.addEventListener('fetch', (event) => {
             if (response) {
               return response
             }
-            // Return offline page for navigation requests
             if (event.request.mode === 'navigate') {
               return caches.match('/offline.html')
             }
