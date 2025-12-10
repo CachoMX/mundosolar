@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+export const dynamic = 'force-dynamic'
+
 // DELETE /api/maintenance/[id]/parts/[partId] - Remove part (and restore inventory)
 export async function DELETE(
   request: NextRequest,

@@ -4,6 +4,8 @@ import bcrypt from 'bcryptjs'
 import { cookies } from 'next/headers'
 import { SignJWT, jwtVerify } from 'jose'
 
+export const dynamic = 'force-dynamic'
+
 const JWT_SECRET = new TextEncoder().encode(
   process.env.NEXTAUTH_SECRET || 'mundosolar-client-secret-key'
 )

@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+export const dynamic = 'force-dynamic'
+
 // PATCH /api/notifications/[id]/read - Mark notification as read
 export async function PATCH(
   request: NextRequest,

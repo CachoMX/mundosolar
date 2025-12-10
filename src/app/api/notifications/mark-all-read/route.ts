@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+export const dynamic = 'force-dynamic'
+
 // POST /api/notifications/mark-all-read - Mark all user notifications as read
 export async function POST(request: NextRequest) {
   try {

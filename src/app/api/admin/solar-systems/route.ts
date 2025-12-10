@@ -3,6 +3,8 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { prisma } from '@/lib/prisma'
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/admin/solar-systems - Fetch all client solar systems (admin only)
 export async function GET(request: NextRequest) {
   try {

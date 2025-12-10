@@ -1,4 +1,10 @@
 import { PrismaClient } from '@prisma/client'
+import { config } from 'dotenv'
+import { resolve } from 'path'
+
+// Force load .env.local with override to fix inherited environment variables
+config({ path: resolve(process.cwd(), '.env.local'), override: true })
+config({ path: resolve(process.cwd(), '.env'), override: true })
 
 /**
  * Prisma Client Singleton

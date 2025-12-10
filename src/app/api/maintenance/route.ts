@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/maintenance - List maintenances with filters
 export async function GET(request: NextRequest) {
   try {

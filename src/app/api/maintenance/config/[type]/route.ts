@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+export const dynamic = 'force-dynamic'
+
 // PATCH /api/maintenance/config/[type] - Update configuration
 export async function PATCH(
   request: NextRequest,
