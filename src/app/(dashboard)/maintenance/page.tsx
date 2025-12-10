@@ -379,7 +379,7 @@ export default function MaintenancePage() {
                       </p>
                       {event.resource.technicians && event.resource.technicians.length > 0 && (
                         <p className="text-xs text-gray-500 mt-1">
-                          {event.resource.technicians.map((t: any) => t.user.name).join(', ')}
+                          {event.resource.technicians.map((t: any) => t.technician?.name || 'Sin nombre').join(', ')}
                         </p>
                       )}
                     </div>
@@ -421,7 +421,7 @@ export default function MaintenancePage() {
                     </p>
                     {item.technicians && item.technicians.length > 0 && (
                       <p className="text-xs text-gray-500 mt-1">
-                        {item.technicians.map((t: any) => t.user.name).join(', ')}
+                        {item.technicians.map((t: any) => t.technician?.name || 'Sin nombre').join(', ')}
                       </p>
                     )}
                   </div>

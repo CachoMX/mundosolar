@@ -22,14 +22,14 @@ export async function PATCH(
       }
     )
 
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+    if (authError || !authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Find the Prisma user by email to get the correct ID
     const user = await prisma.user.findUnique({
-      where: { email: session.user.email! },
+      where: { email: authUser.email! },
       select: { id: true }
     })
 

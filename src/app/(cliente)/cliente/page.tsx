@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -46,6 +47,7 @@ interface ClientDashboardData {
 }
 
 export default function ClienteDashboardPage() {
+  const router = useRouter()
   const [data, setData] = useState<ClientDashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -198,8 +200,14 @@ export default function ClienteDashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {data.recentMaintenance.map((maintenance) => (
-                    <div key={maintenance.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  {data.recentMaintenance
+                    .filter((m) => m.status !== 'CANCELLED')
+                    .map((maintenance) => (
+                    <div
+                      key={maintenance.id}
+                      className="flex items-center justify-between p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                      onClick={() => router.push(`/cliente/mantenimientos?selected=${maintenance.id}`)}
+                    >
                       <div className="flex-1">
                         <div className="flex items-center space-x-2">
                           <p className="font-medium">{maintenance.title}</p>

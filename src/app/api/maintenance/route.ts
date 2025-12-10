@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
       }
     )
 
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -126,10 +126,16 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+    if (authError || !authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // Get Prisma user by email
+    const prismaUser = await prisma.user.findFirst({
+      where: { email: authUser.email },
+      select: { id: true }
+    })
 
     const body = await request.json()
     const {
@@ -137,13 +143,15 @@ export async function POST(request: NextRequest) {
       solarSystemId,
       type,
       priority,
-      status,
       scheduledDate,
       title,
       description,
       privateNotes,
       technicianIds
     } = body
+
+    // When admin creates maintenance, it's automatically SCHEDULED (approved)
+    const maintenanceStatus = 'SCHEDULED'
 
     // Create maintenance
     const maintenance = await prisma.maintenanceRecord.create({
@@ -152,20 +160,20 @@ export async function POST(request: NextRequest) {
         solarSystemId: solarSystemId || null,
         type,
         priority: priority || 'SCHEDULED',
-        status: status || 'PENDING_APPROVAL',
+        status: maintenanceStatus,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
         title,
         description,
         privateNotes,
-        createdBy: session.user.id,
+        createdBy: prismaUser?.id || null,
         // Create status history
-        statusHistory: {
+        statusHistory: prismaUser ? {
           create: {
-            status: status || 'PENDING_APPROVAL',
-            notes: 'Mantenimiento creado',
-            changedById: session.user.id,
+            status: maintenanceStatus,
+            notes: 'Mantenimiento programado por administrador',
+            changedById: prismaUser.id,
           }
-        },
+        } : undefined,
         // Assign technicians
         technicians: technicianIds && technicianIds.length > 0 ? {
           create: technicianIds.map((techId: string, index: number) => ({
@@ -197,14 +205,14 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Create notification for client if status is SCHEDULED
-    if (status === 'SCHEDULED' && scheduledDate) {
+    // Create notification for client (admin-created maintenances are always SCHEDULED)
+    if (scheduledDate) {
       await prisma.notification.create({
         data: {
-          userId: clientId,
+          clientId: clientId,
           type: 'maintenance_scheduled',
           title: 'Mantenimiento Programado',
-          message: `Su mantenimiento "${title}" ha sido programado para el ${new Date(scheduledDate).toLocaleDateString('es-MX')}`,
+          message: `Se ha programado un mantenimiento "${title}" para el ${new Date(scheduledDate).toLocaleDateString('es-MX')}`,
           data: {
             maintenanceId: maintenance.id,
             scheduledDate: scheduledDate

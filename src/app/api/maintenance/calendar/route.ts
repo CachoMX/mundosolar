@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
       }
     )
 
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -80,12 +80,17 @@ export async function GET(request: NextRequest) {
       title: m.title,
       start: m.scheduledDate,
       end: m.scheduledDate, // Same as start for now
-      type: m.type,
-      status: m.status,
-      priority: m.priority,
-      client: `${m.client.firstName} ${m.client.lastName}`,
-      system: m.solarSystem?.systemName || 'General',
-      technician: m.technicians[0]?.technician.name || 'Sin asignar',
+      resource: {
+        type: m.type,
+        status: m.status,
+        priority: m.priority,
+        client: m.client,
+        solarSystem: m.solarSystem,
+        technician: m.technicians[0]?.technician.name || 'Sin asignar',
+        technicians: m.technicians.map(t => ({
+          technician: { name: t.technician.name }
+        })),
+      },
       // Color coding by status
       backgroundColor: getStatusColor(m.status),
       borderColor: getStatusColor(m.status),

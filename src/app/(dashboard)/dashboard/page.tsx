@@ -16,9 +16,7 @@ import {
   Leaf,
   AlertTriangle,
   Loader2,
-  Plus,
-  Edit,
-  Trash2
+  Plus
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -65,29 +63,6 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchDashboardData()
   }, [])
-
-  const handleDeleteMaintenance = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!confirm('¿Estás seguro de eliminar este mantenimiento cancelado?')) {
-      return
-    }
-
-    try {
-      const response = await fetch(`/api/maintenance/${id}`, {
-        method: 'DELETE',
-      })
-
-      const result = await response.json()
-      if (result.success) {
-        fetchDashboardData()
-      } else {
-        alert(result.error || 'Error al eliminar')
-      }
-    } catch (error) {
-      console.error('Error deleting maintenance:', error)
-      alert('Error al eliminar mantenimiento')
-    }
-  }
 
   const fetchDashboardData = async () => {
     try {
@@ -320,7 +295,9 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {data.recentMaintenance.map((maintenance) => (
+                  {data.recentMaintenance
+                    .filter((m) => m.status !== 'CANCELLED')
+                    .map((maintenance) => (
                     <div
                       key={maintenance.id}
                       className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
@@ -333,33 +310,10 @@ export default function DashboardPage() {
                         </div>
                         <p className="text-sm text-muted-foreground">{maintenance.maintenanceType}</p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-right mr-2">
-                          <p className="text-sm font-medium">
-                            {new Date(maintenance.scheduledDate).toLocaleDateString('es-MX')}
-                          </p>
-                        </div>
-                        {maintenance.status === 'SCHEDULED' && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              router.push(`/maintenance/${maintenance.id}`)
-                            }}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {maintenance.status === 'CANCELLED' && (
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={(e) => handleDeleteMaintenance(maintenance.id, e)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
+                      <div className="text-right">
+                        <p className="text-sm font-medium">
+                          {new Date(maintenance.scheduledDate).toLocaleDateString('es-MX')}
+                        </p>
                       </div>
                     </div>
                   ))}

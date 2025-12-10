@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -76,6 +77,7 @@ interface SolarSystem {
 }
 
 export default function MantenimientosPage() {
+  const searchParams = useSearchParams()
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [view, setView] = useState<'calendar' | 'table'>('calendar')
@@ -115,6 +117,18 @@ export default function MantenimientosPage() {
     }
     loadData()
   }, [])
+
+  // Handle selected maintenance from URL params
+  useEffect(() => {
+    const selectedId = searchParams.get('selected')
+    if (selectedId && events.length > 0) {
+      const selectedEvent = events.find(e => e.id === selectedId)
+      if (selectedEvent && selectedEvent.resource?.status !== 'CANCELLED') {
+        setSelectedAppointment(selectedEvent)
+        setShowDetailsModal(true)
+      }
+    }
+  }, [searchParams, events])
 
   const loadData = async () => {
     try {
@@ -702,7 +716,7 @@ export default function MantenimientosPage() {
                       </p>
                       {event.resource.technicians && event.resource.technicians.length > 0 && (
                         <p className="text-xs text-gray-500 mt-1">
-                          {event.resource.technicians.map((t: any) => t.user.name).join(', ')}
+                          {event.resource.technicians.map((t: any) => t.technician?.name || 'Sin nombre').join(', ')}
                         </p>
                       )}
                     </div>
@@ -743,7 +757,7 @@ export default function MantenimientosPage() {
                     </p>
                     {item.technicians && item.technicians.length > 0 && (
                       <p className="text-xs text-gray-500 mt-1">
-                        {item.technicians.map((t: any) => t.user.name).join(', ')}
+                        {item.technicians.map((t: any) => t.technician?.name || 'Sin nombre').join(', ')}
                       </p>
                     )}
                   </div>
@@ -790,29 +804,10 @@ export default function MantenimientosPage() {
             </p>
           </div>
 
-          <DialogFooter className="flex gap-2 sm:gap-2">
-            <Button
-              variant="destructive"
-              onClick={handleDeleteCancelledMaintenance}
-              disabled={deleting}
-              className="flex-1"
-            >
-              {deleting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Eliminando...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Eliminar
-                </>
-              )}
-            </Button>
+          <DialogFooter>
             <Button
               onClick={handleDismissRejection}
-              disabled={deleting}
-              className="flex-1"
+              className="w-full"
             >
               Entendido
             </Button>

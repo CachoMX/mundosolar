@@ -19,19 +19,26 @@ export async function GET(request: NextRequest) {
       }
     )
 
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+    if (authError || !authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Find the Prisma user by email to get the correct ID
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email! },
+    const user = await prisma.user.findFirst({
+      where: { email: authUser.email! },
       select: { id: true }
     })
 
+    // If user not found in our DB, return empty notifications (user exists in Supabase but not synced)
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+      return NextResponse.json({
+        success: true,
+        data: {
+          notifications: [],
+          unreadCount: 0
+        }
+      })
     }
 
     const { searchParams } = new URL(request.url)

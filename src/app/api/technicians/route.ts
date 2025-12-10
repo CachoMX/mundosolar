@@ -19,14 +19,14 @@ export async function GET(request: NextRequest) {
       }
     )
 
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+    if (authError || !authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Get current user by email to check permissions
     const user = await prisma.user.findFirst({
-      where: { email: session.user.email },
+      where: { email: authUser.email },
       select: { role: true }
     })
 

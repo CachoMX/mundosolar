@@ -152,7 +152,7 @@ export async function GET(request: NextRequest) {
         technician: m.technicians[0]?.technician.name || 'Sin asignar',
         solarSystem: m.solarSystem,
         technicians: m.technicians.map(t => ({
-          user: { name: t.technician.name }
+          technician: { name: t.technician.name }
         })),
         isOwn: true,
         // Include rejection reason for cancelled maintenances

@@ -557,15 +557,15 @@ export default function MaintenanceDetailPage() {
           <CardTitle>Técnicos Asignados</CardTitle>
         </CardHeader>
         <CardContent>
-          {maintenance.technicians.length === 0 ? (
+          {!maintenance.technicians || maintenance.technicians.length === 0 ? (
             <p className="text-sm text-muted-foreground">No hay técnicos asignados</p>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {maintenance.technicians.map((tech) => (
                 <div key={tech.id} className="flex items-center gap-3 p-3 border rounded-lg">
                   <div className="flex-1">
-                    <p className="font-medium">{tech.user.name}</p>
-                    <p className="text-sm text-muted-foreground">{tech.user.email}</p>
+                    <p className="font-medium">{tech.technician?.name || 'Sin nombre'}</p>
+                    <p className="text-sm text-muted-foreground">{tech.technician?.email || ''}</p>
                     {tech.role && (
                       <Badge variant="outline" className="mt-1">
                         {tech.role}
