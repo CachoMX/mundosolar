@@ -564,8 +564,8 @@ export default function MaintenanceDetailPage() {
               {maintenance.technicians.map((tech) => (
                 <div key={tech.id} className="flex items-center gap-3 p-3 border rounded-lg">
                   <div className="flex-1">
-                    <p className="font-medium">{tech.technician?.name || 'Sin nombre'}</p>
-                    <p className="text-sm text-muted-foreground">{tech.technician?.email || ''}</p>
+                    <p className="font-medium">{tech.user?.name || 'Sin nombre'}</p>
+                    <p className="text-sm text-muted-foreground">{tech.user?.email || ''}</p>
                     {tech.role && (
                       <Badge variant="outline" className="mt-1">
                         {tech.role}
