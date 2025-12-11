@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, withRetry } from '@/lib/prisma'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 // GET /api/maintenance/calendar - Calendar events
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const maintenances = await prisma.maintenanceRecord.findMany({
+    const maintenances = await withRetry(() => prisma.maintenanceRecord.findMany({
       where: {
         scheduledDate: {
           gte: new Date(start),
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
       orderBy: {
         scheduledDate: 'asc'
       }
-    })
+    }))
 
     // Transform to calendar events format
     const events = maintenances.map(m => ({

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { prisma } from '@/lib/prisma'
+import { prisma, withRetry } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all clients with Growatt credentials
-    const clients = await prisma.client.findMany({
+    const clients = await withRetry(() => prisma.client.findMany({
       where: {
         AND: [
           { growattUsername: { not: null } },
@@ -69,15 +69,15 @@ export async function GET(request: NextRequest) {
       orderBy: {
         firstName: 'asc'
       }
-    })
+    }))
 
     // Get cached data for all clients
     const clientIds = clients.map(c => c.id)
-    const cachedData = await prisma.growattDataCache.findMany({
+    const cachedData = await withRetry(() => prisma.growattDataCache.findMany({
       where: {
         clientId: { in: clientIds }
       }
-    })
+    }))
 
     // Create a map for quick lookup
     const cacheMap = new Map(cachedData.map(c => [c.clientId, c]))

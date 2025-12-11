@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, withRetry } from '@/lib/prisma'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const invoices = await prisma.invoice.findMany({
+    const invoices = await withRetry(() => prisma.invoice.findMany({
       include: {
         order: {
           include: {
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       orderBy: {
         createdAt: 'desc'
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const data = await request.json()
 
     // First, create an order for this invoice
-    const order = await prisma.order.create({
+    const order = await withRetry(() => prisma.order.create({
       data: {
         orderNumber: `ORD-${data.invoiceNumber}`,
         clientId: data.clientId,
@@ -65,22 +65,22 @@ export async function POST(request: NextRequest) {
         total: data.total,
         notes: data.notes || null
       }
-    })
+    }))
 
     // For now, we'll skip creating order items since we need product management
     // The invoice items will contain the detailed information
 
     // Get client data for RFC
-    const client = await prisma.client.findUnique({
+    const client = await withRetry(() => prisma.client.findUnique({
       where: { id: data.clientId }
-    })
+    }))
 
     if (!client) {
       throw new Error('Cliente no encontrado')
     }
 
     // Create the invoice
-    const invoice = await prisma.invoice.create({
+    const invoice = await withRetry(() => prisma.invoice.create({
       data: {
         invoiceNumber: data.invoiceNumber,
         orderId: order.id,
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
           }
         }
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,

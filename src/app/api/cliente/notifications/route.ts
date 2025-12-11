@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { jwtVerify } from 'jose'
-import { prisma } from '@/lib/prisma'
+import { prisma, withRetry } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     const unreadOnly = searchParams.get('unreadOnly') === 'true'
 
     // Get notifications directly by clientId
-    const notifications = await prisma.notification.findMany({
+    const notifications = await withRetry(() => prisma.notification.findMany({
       where: {
         clientId: clientId,
         ...(unreadOnly && { read: false })
@@ -47,15 +47,15 @@ export async function GET(request: NextRequest) {
         createdAt: 'desc'
       },
       take: 50
-    })
+    }))
 
     // Get unread count
-    const unreadCount = await prisma.notification.count({
+    const unreadCount = await withRetry(() => prisma.notification.count({
       where: {
         clientId: clientId,
         read: false
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,

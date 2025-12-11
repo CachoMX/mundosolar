@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, withRetry } from '@/lib/prisma'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -26,31 +26,24 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get counts in parallel
-    const [
-      totalClients,
-      pendingMaintenance,
-      pendingOrders,
-    ] = await Promise.all([
-      // Total active clients
-      prisma.client.count({
-        where: { isActive: true }
-      }),
-      // Maintenance that needs attention (pending approval + scheduled for today/overdue)
-      prisma.maintenanceRecord.count({
-        where: {
-          status: {
-            in: ['PENDING_APPROVAL', 'SCHEDULED', 'IN_PROGRESS']
-          }
+    // Get counts sequentially with retry to avoid connection pool issues
+    const totalClients = await withRetry(() => prisma.client.count({
+      where: { isActive: true }
+    }))
+
+    const pendingMaintenance = await withRetry(() => prisma.maintenanceRecord.count({
+      where: {
+        status: {
+          in: ['PENDING_APPROVAL', 'SCHEDULED', 'IN_PROGRESS']
         }
-      }),
-      // Pending orders
-      prisma.order.count({
-        where: {
-          status: { in: ['PENDING', 'PROCESSING'] }
-        }
-      }).catch(() => 0)
-    ])
+      }
+    }))
+
+    const pendingOrders = await withRetry(() => prisma.order.count({
+      where: {
+        status: { in: ['PENDING', 'PROCESSING'] }
+      }
+    })).catch(() => 0)
 
     return NextResponse.json({
       success: true,

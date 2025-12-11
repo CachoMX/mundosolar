@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, withRetry } from '@/lib/prisma'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 // GET /api/maintenance/dashboard - Dashboard metrics and upcoming maintenances
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     endOfWeek.setDate(endOfWeek.getDate() + 7)
 
     // Programados hoy
-    const scheduledToday = await prisma.maintenanceRecord.count({
+    const scheduledToday = await withRetry(() => prisma.maintenanceRecord.count({
       where: {
         scheduledDate: {
           gte: today,
@@ -43,10 +43,10 @@ export async function GET(request: NextRequest) {
           in: ['SCHEDULED', 'IN_PROGRESS']
         }
       }
-    })
+    }))
 
     // Programados esta semana
-    const scheduledThisWeek = await prisma.maintenanceRecord.count({
+    const scheduledThisWeek = await withRetry(() => prisma.maintenanceRecord.count({
       where: {
         scheduledDate: {
           gte: today,
@@ -56,10 +56,10 @@ export async function GET(request: NextRequest) {
           in: ['SCHEDULED', 'IN_PROGRESS']
         }
       }
-    })
+    }))
 
     // Atrasados
-    const overdue = await prisma.maintenanceRecord.count({
+    const overdue = await withRetry(() => prisma.maintenanceRecord.count({
       where: {
         scheduledDate: {
           lt: today
@@ -68,24 +68,24 @@ export async function GET(request: NextRequest) {
           in: ['SCHEDULED', 'PENDING_APPROVAL']
         }
       }
-    })
+    }))
 
     // Total completados este mes
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-    const completedThisMonth = await prisma.maintenanceRecord.count({
+    const completedThisMonth = await withRetry(() => prisma.maintenanceRecord.count({
       where: {
         completedDate: {
           gte: firstDayOfMonth
         },
         status: 'COMPLETED'
       }
-    })
+    }))
 
     // Próximos mantenimientos (próximos 14 días)
     const upcomingDate = new Date(today)
     upcomingDate.setDate(upcomingDate.getDate() + 14)
 
-    const upcoming = await prisma.maintenanceRecord.findMany({
+    const upcoming = await withRetry(() => prisma.maintenanceRecord.findMany({
       where: {
         scheduledDate: {
           gte: today,
@@ -126,10 +126,10 @@ export async function GET(request: NextRequest) {
         scheduledDate: 'asc'
       },
       take: 10
-    })
+    }))
 
     // Mantenimientos atrasados (para alertas)
-    const overdueList = await prisma.maintenanceRecord.findMany({
+    const overdueList = await withRetry(() => prisma.maintenanceRecord.findMany({
       where: {
         scheduledDate: {
           lt: today
@@ -157,14 +157,14 @@ export async function GET(request: NextRequest) {
         scheduledDate: 'asc'
       },
       take: 5
-    })
+    }))
 
     // Pendientes de aprobación
-    const pendingApproval = await prisma.maintenanceRecord.count({
+    const pendingApproval = await withRetry(() => prisma.maintenanceRecord.count({
       where: {
         status: 'PENDING_APPROVAL'
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,

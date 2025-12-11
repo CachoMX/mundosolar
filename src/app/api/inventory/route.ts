@@ -1,19 +1,19 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, withRetry } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
     // Get total products count
-    const totalProducts = await prisma.inventoryItem.aggregate({
+    const totalProducts = await withRetry(() => prisma.inventoryItem.aggregate({
       _sum: {
         quantity: true
       }
-    })
+    }))
 
     // Get products with low stock (less than 10 units)
-    const lowStockItems = await prisma.inventoryItem.findMany({
+    const lowStockItems = await withRetry(() => prisma.inventoryItem.findMany({
       where: {
         quantity: {
           lt: 10
@@ -22,24 +22,24 @@ export async function GET() {
       include: {
         product: true
       }
-    })
+    }))
 
     // Get total inventory value
-    const inventoryValue = await prisma.inventoryItem.aggregate({
+    const inventoryValue = await withRetry(() => prisma.inventoryItem.aggregate({
       _sum: {
         totalCost: true
       }
-    })
+    }))
 
     // Get total locations
-    const totalLocations = await prisma.location.count({
+    const totalLocations = await withRetry(() => prisma.location.count({
       where: {
         isActive: true
       }
-    })
+    }))
 
     // Get inventory by category
-    const categoriesWithInventory = await prisma.productCategory.findMany({
+    const categoriesWithInventory = await withRetry(() => prisma.productCategory.findMany({
       where: {
         isActive: true
       },
@@ -50,7 +50,7 @@ export async function GET() {
           }
         }
       }
-    })
+    }))
 
     // Calculate quantities per category
     const categoryData = categoriesWithInventory.map(category => {
@@ -66,7 +66,7 @@ export async function GET() {
     })
 
     // Get recent inventory movements
-    const recentMovements = await prisma.inventoryMovement.findMany({
+    const recentMovements = await withRetry(() => prisma.inventoryMovement.findMany({
       take: 10,
       orderBy: {
         createdAt: 'desc'
@@ -85,7 +85,7 @@ export async function GET() {
           }
         }
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,

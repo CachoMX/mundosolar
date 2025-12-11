@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, withRetry } from '@/lib/prisma'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -11,7 +11,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -29,7 +29,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const maintenance = await prisma.maintenanceRecord.findUnique({
+    const maintenance = await withRetry(() => prisma.maintenanceRecord.findUnique({
       where: { id: params.id },
       include: {
         client: {
@@ -99,7 +99,7 @@ export async function GET(
           }
         }
       }
-    })
+    }))
 
     if (!maintenance) {
       return NextResponse.json(
@@ -127,7 +127,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -158,7 +158,7 @@ export async function PATCH(
       cost
     } = body
 
-    const maintenance = await prisma.maintenanceRecord.update({
+    const maintenance = await withRetry(() => prisma.maintenanceRecord.update({
       where: { id: params.id },
       data: {
         ...(type && { type }),
@@ -179,7 +179,7 @@ export async function PATCH(
           }
         }
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,
@@ -219,17 +219,17 @@ export async function DELETE(
     }
 
     // Find the Prisma user by email to get the correct ID
-    const user = await prisma.user.findUnique({
+    const user = await withRetry(() => prisma.user.findUnique({
       where: { email: authUser.email! },
       select: { id: true }
-    })
+    }))
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     // Don't actually delete, just mark as cancelled
-    const maintenance = await prisma.maintenanceRecord.update({
+    const maintenance = await withRetry(() => prisma.maintenanceRecord.update({
       where: { id: params.id },
       data: {
         status: 'CANCELLED',
@@ -241,7 +241,7 @@ export async function DELETE(
           }
         }
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,

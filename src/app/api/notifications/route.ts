@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, withRetry } from '@/lib/prisma'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -27,10 +27,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Find the Prisma user by email to get the correct ID
-    const user = await prisma.user.findFirst({
+    const user = await withRetry(() => prisma.user.findFirst({
       where: { email: authUser.email! },
       select: { id: true }
-    })
+    }))
 
     // If user not found in our DB, return empty notifications (user exists in Supabase but not synced)
     if (!user) {
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const unreadOnly = searchParams.get('unreadOnly') === 'true'
 
-    const notifications = await prisma.notification.findMany({
+    const notifications = await withRetry(() => prisma.notification.findMany({
       where: {
         userId: user.id,
         ...(unreadOnly && { read: false })
@@ -55,15 +55,15 @@ export async function GET(request: NextRequest) {
         createdAt: 'desc'
       },
       take: 50
-    })
+    }))
 
     // Get unread count
-    const unreadCount = await prisma.notification.count({
+    const unreadCount = await withRetry(() => prisma.notification.count({
       where: {
         userId: user.id,
         read: false
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,

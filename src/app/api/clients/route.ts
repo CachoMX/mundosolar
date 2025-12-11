@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, withRetry } from '@/lib/prisma'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -14,14 +14,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const clients = await prisma.client.findMany({
+    const clients = await withRetry(() => prisma.client.findMany({
       include: {
         solarSystems: true
       },
       orderBy: {
         createdAt: 'desc'
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const data = await request.json()
     
     // Create client in database
-    const client = await prisma.client.create({
+    const client = await withRetry(() => prisma.client.create({
       data: {
         firstName: data.type === 'business' ? data.businessName : data.firstName,
         lastName: data.type === 'business' ? '' : (data.lastName || ''),
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
         notes: data.notes || null,
         isActive: true
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,

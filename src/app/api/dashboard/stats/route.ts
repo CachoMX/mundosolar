@@ -1,30 +1,30 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, withRetry } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
     // Get total clients
-    const totalClients = await prisma.client.count({
+    const totalClients = await withRetry(() => prisma.client.count({
       where: { isActive: true }
-    })
+    }))
 
     // Get active orders (pending or in progress)
-    const activeOrders = await prisma.order.count({
+    const activeOrders = await withRetry(() => prisma.order.count({
       where: {
         status: {
           in: ['PENDING', 'IN_PROGRESS', 'CONFIRMED']
         }
       }
-    })
+    }))
 
     // Get monthly revenue (current month)
     const startOfMonth = new Date()
     startOfMonth.setDate(1)
     startOfMonth.setHours(0, 0, 0, 0)
 
-    const monthlyRevenue = await prisma.order.aggregate({
+    const monthlyRevenue = await withRetry(() => prisma.order.aggregate({
       where: {
         createdAt: {
           gte: startOfMonth
@@ -36,19 +36,19 @@ export async function GET() {
       _sum: {
         total: true
       }
-    })
+    }))
 
     // Get pending maintenance
-    const pendingMaintenance = await prisma.maintenanceRecord.count({
+    const pendingMaintenance = await withRetry(() => prisma.maintenanceRecord.count({
       where: {
         status: {
           in: ['PENDING_APPROVAL', 'SCHEDULED']
         }
       }
-    })
+    }))
 
     // Get total energy generated (this month)
-    const totalEnergyGenerated = await prisma.energyReading.aggregate({
+    const totalEnergyGenerated = await withRetry(() => prisma.energyReading.aggregate({
       where: {
         readingDate: {
           gte: startOfMonth
@@ -57,10 +57,10 @@ export async function GET() {
       _sum: {
         dailyGeneration: true
       }
-    })
+    }))
 
     // Get CO2 saved this month
-    const co2SavedThisMonth = await prisma.energyReading.aggregate({
+    const co2SavedThisMonth = await withRetry(() => prisma.energyReading.aggregate({
       where: {
         readingDate: {
           gte: startOfMonth
@@ -69,10 +69,10 @@ export async function GET() {
       _sum: {
         co2Saved: true
       }
-    })
+    }))
 
     // Get recent orders
-    const recentOrders = await prisma.order.findMany({
+    const recentOrders = await withRetry(() => prisma.order.findMany({
       take: 5,
       orderBy: {
         createdAt: 'desc'
@@ -85,10 +85,10 @@ export async function GET() {
           }
         }
       }
-    })
+    }))
 
     // Get active/upcoming maintenance (not completed or cancelled)
-    const recentMaintenance = await prisma.maintenanceRecord.findMany({
+    const recentMaintenance = await withRetry(() => prisma.maintenanceRecord.findMany({
       where: {
         status: {
           in: ['SCHEDULED', 'IN_PROGRESS', 'PENDING_APPROVAL']
@@ -106,7 +106,7 @@ export async function GET() {
           }
         }
       }
-    })
+    }))
 
     // Get monthly revenue trend (last 6 months)
     const monthlyTrend = []
@@ -119,7 +119,7 @@ export async function GET() {
       const monthEnd = new Date(monthStart)
       monthEnd.setMonth(monthEnd.getMonth() + 1)
 
-      const revenue = await prisma.order.aggregate({
+      const revenue = await withRetry(() => prisma.order.aggregate({
         where: {
           createdAt: {
             gte: monthStart,
@@ -132,7 +132,7 @@ export async function GET() {
         _sum: {
           total: true
         }
-      })
+      }))
 
       monthlyTrend.push({
         month: monthStart.toLocaleDateString('es-MX', { month: 'short' }),
