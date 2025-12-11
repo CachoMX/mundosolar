@@ -1,5 +1,5 @@
 // Service Worker for MundoSolar PWA
-const CACHE_NAME = 'mundosolar-v1'
+const CACHE_NAME = 'mundosolar-v2'
 const urlsToCache = [
   '/',
   '/dashboard',
@@ -37,6 +37,18 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   // Skip non-http(s) requests (chrome-extension, etc.)
   if (!event.request.url.startsWith('http')) {
+    return
+  }
+
+  // Only cache GET requests - Cache API doesn't support other methods
+  if (event.request.method !== 'GET') {
+    return
+  }
+
+  // Skip API requests and external URLs from caching
+  if (event.request.url.includes('/api/') ||
+      event.request.url.includes('vercel.live') ||
+      event.request.url.includes('supabase')) {
     return
   }
 
