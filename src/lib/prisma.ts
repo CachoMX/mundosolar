@@ -40,8 +40,8 @@ if (process.env.NODE_ENV !== 'production') {
 // Helper function to execute with retry for connection issues
 export async function withRetry<T>(
   fn: () => Promise<T>,
-  maxRetries: number = 3,
-  delay: number = 1000
+  maxRetries: number = 5,
+  delay: number = 500
 ): Promise<T> {
   let lastError: Error | null = null
 
@@ -52,13 +52,20 @@ export async function withRetry<T>(
       lastError = error
       const isConnectionError =
         error.message?.includes("Can't reach database server") ||
+        error.message?.includes('Connection refused') ||
+        error.message?.includes('ECONNREFUSED') ||
+        error.message?.includes('ETIMEDOUT') ||
+        error.message?.includes('Connection reset') ||
         error.code === 'P1001' ||
-        error.code === 'P1002'
+        error.code === 'P1002' ||
+        error.code === 'P1008' ||
+        error.code === 'P1017'
 
       if (isConnectionError && attempt < maxRetries) {
-        console.log(`Database connection attempt ${attempt} failed, retrying in ${delay}ms...`)
+        console.log(`Database connection attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms...`)
         await new Promise(resolve => setTimeout(resolve, delay))
-        delay *= 2 // Exponential backoff
+        // Faster backoff: 500ms, 750ms, 1125ms, 1687ms (total ~4s max wait)
+        delay = Math.min(delay * 1.5, 2000)
       } else {
         throw error
       }
