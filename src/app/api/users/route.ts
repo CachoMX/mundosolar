@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 import { createClient } from '@supabase/supabase-js'
 
-const prisma = new PrismaClient()
+export const dynamic = 'force-dynamic'
 
 // Supabase admin client (server-side only with service role key)
 const supabaseAdmin = createClient(

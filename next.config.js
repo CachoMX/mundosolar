@@ -2,6 +2,9 @@
 const nextConfig = {
   images: {
     domains: ['localhost'],
+    dangerouslyAllowSVG: true,
+    contentDispositionType: 'attachment',
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   // Exclude mobile app folder from Next.js build
   typescript: {

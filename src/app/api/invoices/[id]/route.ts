@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createClient } from '@/lib/supabase/server'
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/invoices/[id] - Fetch single invoice
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
