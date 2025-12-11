@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
@@ -27,11 +27,11 @@ interface NavigationItem {
   title: string
   href: string
   icon: any
-  badge?: string | number
+  badgeKey?: 'clients' | 'orders' | 'maintenance'
   description: string
 }
 
-const navigation: NavigationItem[] = [
+const navigationItems: NavigationItem[] = [
   {
     title: 'Dashboard',
     href: '/dashboard',
@@ -42,7 +42,7 @@ const navigation: NavigationItem[] = [
     title: 'Clientes',
     href: '/clients',
     icon: Users,
-    badge: '234',
+    badgeKey: 'clients',
     description: 'Gestión de clientes y datos fiscales'
   },
   {
@@ -55,14 +55,14 @@ const navigation: NavigationItem[] = [
     title: 'Órdenes',
     href: '/orders',
     icon: ClipboardList,
-    badge: '12',
+    badgeKey: 'orders',
     description: 'Gestión de pedidos y ventas'
   },
   {
     title: 'Mantenimiento',
     href: '/maintenance',
     icon: Wrench,
-    badge: '8',
+    badgeKey: 'maintenance',
     description: 'Programación de mantenimientos'
   },
   {
@@ -97,13 +97,39 @@ const navigation: NavigationItem[] = [
   }
 ]
 
+interface SidebarCounts {
+  clients: number
+  orders: number
+  maintenance: number
+}
+
 interface SidebarProps {
   className?: string
 }
 
 export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [counts, setCounts] = useState<SidebarCounts>({ clients: 0, orders: 0, maintenance: 0 })
   const pathname = usePathname()
+
+  useEffect(() => {
+    loadCounts()
+    // Refresh counts every 60 seconds
+    const interval = setInterval(loadCounts, 60000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const loadCounts = async () => {
+    try {
+      const response = await fetch('/api/sidebar-counts')
+      const data = await response.json()
+      if (data.success) {
+        setCounts(data.data)
+      }
+    } catch (error) {
+      console.error('Error loading sidebar counts:', error)
+    }
+  }
 
   return (
     <div
@@ -137,10 +163,11 @@ export function Sidebar({ className }: SidebarProps) {
       {/* Navigation Items */}
       <ScrollArea className="flex-1">
         <div className="space-y-1 p-2">
-          {navigation.map((item) => {
+          {navigationItems.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-            
+            const badgeValue = item.badgeKey ? counts[item.badgeKey] : null
+
             return (
               <Link key={item.href} href={item.href}>
                 <Button
@@ -158,12 +185,12 @@ export function Sidebar({ className }: SidebarProps) {
                       <div className="flex-1 text-left">
                         <div className="flex items-center justify-between">
                           <span className="text-sm">{item.title}</span>
-                          {item.badge && (
+                          {badgeValue !== null && badgeValue > 0 && (
                             <Badge
                               variant={isActive ? 'default' : 'secondary'}
                               className="text-xs h-5"
                             >
-                              {item.badge}
+                              {badgeValue}
                             </Badge>
                           )}
                         </div>

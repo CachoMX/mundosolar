@@ -139,15 +139,15 @@ export default function ClienteDashboardPage() {
   ]
 
   const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-      'PENDING_APPROVAL': { label: 'Pendiente', variant: 'secondary' },
-      'SCHEDULED': { label: 'Programado', variant: 'default' },
-      'IN_PROGRESS': { label: 'En Proceso', variant: 'default' },
-      'COMPLETED': { label: 'Completado', variant: 'outline' },
-      'CANCELLED': { label: 'Cancelado', variant: 'destructive' }
+    const config: Record<string, { label: string; className: string }> = {
+      PENDING_APPROVAL: { label: 'Pendiente Aprobación', className: 'bg-amber-500 text-white hover:bg-amber-600' },
+      SCHEDULED: { label: 'Programado', className: 'bg-emerald-500 text-white hover:bg-emerald-600' },
+      IN_PROGRESS: { label: 'En Progreso', className: 'bg-violet-500 text-white hover:bg-violet-600' },
+      COMPLETED: { label: 'Completado', className: 'bg-gray-500 text-white hover:bg-gray-600' },
+      CANCELLED: { label: 'Cancelado', className: 'bg-red-500 text-white hover:bg-red-600' }
     }
-    const statusInfo = statusMap[status] || { label: status, variant: 'outline' }
-    return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+    const statusConfig = config[status] || config.SCHEDULED
+    return <Badge className={statusConfig.className}>{statusConfig.label}</Badge>
   }
 
   return (
@@ -189,8 +189,8 @@ export default function ClienteDashboardPage() {
         <TabsContent value="maintenance" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Historial de Mantenimientos</CardTitle>
-              <CardDescription>Mantenimientos programados y realizados</CardDescription>
+              <CardTitle>Mantenimientos Activos</CardTitle>
+              <CardDescription>Mantenimientos pendientes, programados y en progreso</CardDescription>
             </CardHeader>
             <CardContent>
               {data.recentMaintenance.length === 0 ? (
@@ -200,9 +200,7 @@ export default function ClienteDashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {data.recentMaintenance
-                    .filter((m) => m.status !== 'CANCELLED')
-                    .map((maintenance) => (
+                  {data.recentMaintenance.map((maintenance) => (
                     <div
                       key={maintenance.id}
                       className="flex items-center justify-between p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"

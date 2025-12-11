@@ -108,16 +108,16 @@ export default function MaintenancePage() {
   }
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-      PENDING_APPROVAL: { label: 'Pendiente Aprobación', variant: 'outline' },
-      SCHEDULED: { label: 'Programado', variant: 'default' },
-      IN_PROGRESS: { label: 'En Progreso', variant: 'secondary' },
-      COMPLETED: { label: 'Completado', variant: 'default' },
-      CANCELLED: { label: 'Cancelado', variant: 'destructive' }
+    const config: Record<string, { label: string; className: string }> = {
+      PENDING_APPROVAL: { label: 'Pendiente Aprobación', className: 'bg-amber-500 text-white hover:bg-amber-600' },
+      SCHEDULED: { label: 'Programado', className: 'bg-emerald-500 text-white hover:bg-emerald-600' },
+      IN_PROGRESS: { label: 'En Progreso', className: 'bg-violet-500 text-white hover:bg-violet-600' },
+      COMPLETED: { label: 'Completado', className: 'bg-gray-500 text-white hover:bg-gray-600' },
+      CANCELLED: { label: 'Cancelado', className: 'bg-red-500 text-white hover:bg-red-600' }
     }
 
-    const config = variants[status] || variants.SCHEDULED
-    return <Badge variant={config.variant}>{config.label}</Badge>
+    const statusConfig = config[status] || config.SCHEDULED
+    return <Badge className={statusConfig.className}>{statusConfig.label}</Badge>
   }
 
   const getTypeBadge = (type: string) => {

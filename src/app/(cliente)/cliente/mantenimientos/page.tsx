@@ -104,9 +104,11 @@ export default function MantenimientosPage() {
     type: '',
     title: '',
     description: '',
-    solarSystemId: '',
+    solarSystemId: '', // Empty string means "General (all systems)"
     preferredDate: '',
-    preferredTime: '09:00'
+    preferredHour: '09',
+    preferredMinute: '00',
+    preferredPeriod: 'AM' as 'AM' | 'PM'
   })
 
   useEffect(() => {
@@ -188,7 +190,9 @@ export default function MantenimientosPage() {
       description: '',
       solarSystemId: '',
       preferredDate: '',
-      preferredTime: '09:00'
+      preferredHour: '09',
+      preferredMinute: '00',
+      preferredPeriod: 'AM'
     })
     setRequestMessage(null)
     setShowRequestModal(true)
@@ -273,13 +277,25 @@ export default function MantenimientosPage() {
     setSubmitting(true)
 
     try {
-      // Combine date and time if both are provided
+      // Convert 12h format to 24h format
+      let hour24 = parseInt(formData.preferredHour)
+      if (formData.preferredPeriod === 'PM' && hour24 !== 12) {
+        hour24 += 12
+      } else if (formData.preferredPeriod === 'AM' && hour24 === 12) {
+        hour24 = 0
+      }
+      const timeString = `${hour24.toString().padStart(2, '0')}:${formData.preferredMinute}`
+
+      // Combine date and time if date is provided
       let preferredDateTime = null
       if (formData.preferredDate) {
-        preferredDateTime = formData.preferredTime
-          ? `${formData.preferredDate}T${formData.preferredTime}:00.000Z`
-          : `${formData.preferredDate}T12:00:00.000Z`
+        preferredDateTime = `${formData.preferredDate}T${timeString}:00.000Z`
       }
+
+      // Find the plant name for the selected system
+      const solarSystemId = formData.solarSystemId || null
+      const system = solarSystems.find(s => s.id === solarSystemId)
+      const plantName = system?.name || null
 
       const res = await fetch('/api/cliente/mantenimientos/solicitar', {
         method: 'POST',
@@ -288,7 +304,8 @@ export default function MantenimientosPage() {
           type: formData.type,
           title: formData.title,
           description: formData.description || null,
-          solarSystemId: formData.solarSystemId || null,
+          solarSystemId: solarSystemId,
+          plantName: plantName,
           preferredDate: preferredDateTime
         })
       })
@@ -296,7 +313,7 @@ export default function MantenimientosPage() {
       const data = await res.json()
 
       if (data.success) {
-        setRequestMessage({ type: 'success', text: data.message })
+        setRequestMessage({ type: 'success', text: 'Solicitud de mantenimiento enviada correctamente. Un administrador la revisará pronto.' })
         // Reload data after successful request
         setTimeout(() => {
           setShowRequestModal(false)
@@ -314,17 +331,17 @@ export default function MantenimientosPage() {
   }
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-      PENDING_APPROVAL: { label: 'Pendiente Aprobación', variant: 'outline' },
-      SCHEDULED: { label: 'Programado', variant: 'default' },
-      IN_PROGRESS: { label: 'En Progreso', variant: 'secondary' },
-      COMPLETED: { label: 'Completado', variant: 'default' },
-      CANCELLED: { label: 'Cancelado', variant: 'destructive' },
-      BUSY: { label: 'Día Ocupado', variant: 'secondary' }
+    const config: Record<string, { label: string; className: string }> = {
+      PENDING_APPROVAL: { label: 'Pendiente Aprobación', className: 'bg-amber-500 text-white hover:bg-amber-600' },
+      SCHEDULED: { label: 'Programado', className: 'bg-emerald-500 text-white hover:bg-emerald-600' },
+      IN_PROGRESS: { label: 'En Progreso', className: 'bg-violet-500 text-white hover:bg-violet-600' },
+      COMPLETED: { label: 'Completado', className: 'bg-gray-500 text-white hover:bg-gray-600' },
+      CANCELLED: { label: 'Cancelado', className: 'bg-red-500 text-white hover:bg-red-600' },
+      BUSY: { label: 'Día Ocupado', className: 'bg-gray-400 text-white hover:bg-gray-500' }
     }
 
-    const config = variants[status] || variants.SCHEDULED
-    return <Badge variant={config.variant}>{config.label}</Badge>
+    const statusConfig = config[status] || config.SCHEDULED
+    return <Badge className={statusConfig.className}>{statusConfig.label}</Badge>
   }
 
   const getTypeBadge = (type: string) => {
@@ -443,16 +460,16 @@ export default function MantenimientosPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="solarSystem">Sistema Solar (opcional)</Label>
+                <Label>Sistema Solar (opcional)</Label>
                 <Select
-                  value={formData.solarSystemId || "none"}
-                  onValueChange={(value) => setFormData({ ...formData, solarSystemId: value === "none" ? "" : value })}
+                  value={formData.solarSystemId}
+                  onValueChange={(value) => setFormData({ ...formData, solarSystemId: value === 'general' ? '' : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecciona un sistema" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">General (todos los sistemas)</SelectItem>
+                    <SelectItem value="general">General (todos los sistemas)</SelectItem>
                     {solarSystems.map((system) => (
                       <SelectItem key={system.id} value={system.id}>
                         {system.name} {system.capacity ? `(${system.capacity} kW)` : ''}
@@ -462,25 +479,65 @@ export default function MantenimientosPage() {
                 </Select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="preferredDate">Fecha preferida (opcional)</Label>
-                  <Input
-                    id="preferredDate"
-                    type="date"
-                    value={formData.preferredDate}
-                    onChange={(e) => setFormData({ ...formData, preferredDate: e.target.value })}
-                    min={new Date().toISOString().split('T')[0]}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="preferredTime">Hora preferida</Label>
-                  <Input
-                    id="preferredTime"
-                    type="time"
-                    value={formData.preferredTime}
-                    onChange={(e) => setFormData({ ...formData, preferredTime: e.target.value })}
-                  />
+              <div className="space-y-2">
+                <Label htmlFor="preferredDate">Fecha preferida (opcional)</Label>
+                <Input
+                  id="preferredDate"
+                  type="date"
+                  value={formData.preferredDate}
+                  onChange={(e) => setFormData({ ...formData, preferredDate: e.target.value })}
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Hora preferida</Label>
+                <div className="flex gap-2">
+                  {/* Hour selector (1-12) */}
+                  <Select
+                    value={formData.preferredHour}
+                    onValueChange={(value) => setFormData({ ...formData, preferredHour: value })}
+                  >
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent position="popper" sideOffset={4}>
+                      {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((hour) => (
+                        <SelectItem key={hour} value={hour}>{hour}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <span className="flex items-center text-lg">:</span>
+
+                  {/* Minute selector (00, 05, 10, ..., 55) */}
+                  <Select
+                    value={formData.preferredMinute}
+                    onValueChange={(value) => setFormData({ ...formData, preferredMinute: value })}
+                  >
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent position="popper" sideOffset={4}>
+                      {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map((minute) => (
+                        <SelectItem key={minute} value={minute}>{minute}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* AM/PM selector */}
+                  <Select
+                    value={formData.preferredPeriod}
+                    onValueChange={(value) => setFormData({ ...formData, preferredPeriod: value as 'AM' | 'PM' })}
+                  >
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent position="popper" sideOffset={4}>
+                      <SelectItem value="AM">AM</SelectItem>
+                      <SelectItem value="PM">PM</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { Sun, Search, User, Settings, LogOut, Bell, Check } from 'lucide-react'
+import { Sun, Search, User, Settings, LogOut, Bell, Check, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
@@ -134,11 +134,32 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
     }
   }
 
-  // Handle notification click - navigate to the relevant page
-  const handleNotificationClick = (notification: Notification) => {
-    if (!notification.read) {
-      markAsRead(notification.id)
+  const deleteNotification = async (notificationId: string) => {
+    try {
+      const apiPath = isClientPortal
+        ? `/api/cliente/notifications/${notificationId}`
+        : `/api/notifications/${notificationId}`
+      const response = await fetch(apiPath, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        // Update local state immediately
+        setNotifications(prev => prev.filter(n => n.id !== notificationId))
+        setUnreadCount(prev => {
+          const notification = notifications.find(n => n.id === notificationId)
+          return notification && !notification.read ? prev - 1 : prev
+        })
+      }
+    } catch (error) {
+      console.error('Error deleting notification:', error)
     }
+  }
+
+  // Handle notification click - navigate to the relevant page and delete it
+  const handleNotificationClick = async (notification: Notification) => {
+    // Delete notification when clicked (it will disappear)
+    deleteNotification(notification.id)
 
     // Navigate based on notification type and data
     if (notification.data?.maintenanceId) {
@@ -268,9 +289,21 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
                             })}
                           </p>
                         </div>
-                        {!notification.read && (
-                          <div className="h-2 w-2 rounded-full bg-blue-600 flex-shrink-0 mt-1"></div>
-                        )}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {!notification.read && (
+                            <div className="h-2 w-2 rounded-full bg-blue-600 mt-1"></div>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              deleteNotification(notification.id)
+                            }}
+                            className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+                            title="Eliminar notificación"
+                          >
+                            <X className="h-3 w-3 text-gray-500 hover:text-gray-700" />
+                          </button>
+                        </div>
                       </div>
                     </DropdownMenuItem>
                   ))

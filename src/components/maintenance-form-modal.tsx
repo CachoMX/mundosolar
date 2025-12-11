@@ -32,7 +32,6 @@ import { CalendarIcon, Loader2, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
-import { Badge } from '@/components/ui/badge'
 
 const maintenanceSchema = z.object({
   clientId: z.string().min(1, 'Cliente es requerido'),
@@ -46,7 +45,7 @@ const maintenanceSchema = z.object({
   title: z.string().min(3, 'Título debe tener al menos 3 caracteres'),
   description: z.string().optional(),
   privateNotes: z.string().optional(),
-  technicianIds: z.array(z.string()).optional(),
+  technicianId: z.string().min(1, 'Técnico es requerido'),
 })
 
 type MaintenanceFormData = z.infer<typeof maintenanceSchema>
@@ -87,7 +86,6 @@ export function MaintenanceFormModal({
   const [clients, setClients] = useState<Client[]>([])
   const [solarSystems, setSolarSystems] = useState<SolarSystem[]>([])
   const [technicians, setTechnicians] = useState<Technician[]>([])
-  const [selectedTechnicians, setSelectedTechnicians] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingData, setLoadingData] = useState(true)
 
@@ -104,7 +102,7 @@ export function MaintenanceFormModal({
       type: 'PREVENTIVE',
       priority: 'SCHEDULED',
       scheduledTime: '09:00',
-      technicianIds: [],
+      technicianId: '',
     },
   })
 
@@ -146,9 +144,9 @@ export function MaintenanceFormModal({
       setValue('description', editData.description || '')
       setValue('privateNotes', editData.privateNotes || '')
 
-      const techIds = editData.technicians?.map((t: any) => t.technicianId) || []
-      setSelectedTechnicians(techIds)
-      setValue('technicianIds', techIds)
+      // Get first technician ID if exists
+      const techId = editData.technicians?.[0]?.technicianId || ''
+      setValue('technicianId', techId)
     }
   }, [editData, open])
 
@@ -178,15 +176,6 @@ export function MaintenanceFormModal({
     }
   }
 
-  const toggleTechnician = (techId: string) => {
-    const newSelection = selectedTechnicians.includes(techId)
-      ? selectedTechnicians.filter((id) => id !== techId)
-      : [...selectedTechnicians, techId]
-
-    setSelectedTechnicians(newSelection)
-    setValue('technicianIds', newSelection)
-  }
-
   const onSubmit = async (data: MaintenanceFormData) => {
     try {
       setLoading(true)
@@ -201,6 +190,7 @@ export function MaintenanceFormModal({
         ...data,
         scheduledDate: scheduledDateStr,
         solarSystemId: data.solarSystemId || null,
+        technicianIds: [data.technicianId], // Convert single ID to array for API
       }
 
       const url = editData
@@ -219,7 +209,6 @@ export function MaintenanceFormModal({
 
       if (result.success) {
         reset()
-        setSelectedTechnicians([])
         onSuccess()
         onClose()
       } else {
@@ -235,7 +224,6 @@ export function MaintenanceFormModal({
 
   const handleClose = () => {
     reset()
-    setSelectedTechnicians([])
     setSolarSystems([])
     onClose()
   }
@@ -436,45 +424,33 @@ export function MaintenanceFormModal({
 
             {/* Technician Assignment */}
             <div className="space-y-2">
-              <Label>Técnicos Asignados (opcional)</Label>
-              <div className="border rounded-lg p-4 space-y-2 max-h-48 overflow-y-auto">
-                {technicians.length === 0 ? (
-                  <div className="text-center py-4 text-muted-foreground">
-                    <p className="text-sm">No hay técnicos registrados.</p>
-                    <p className="text-xs mt-1">
-                      Para agregar técnicos, crea usuarios con rol TECHNICIAN en la configuración.
-                    </p>
-                  </div>
-                ) : (
-                  technicians.map((tech) => (
-                    <div
-                      key={tech.id}
-                      className={cn(
-                        'flex items-center justify-between p-2 rounded cursor-pointer hover:bg-gray-50',
-                        selectedTechnicians.includes(tech.id) && 'bg-blue-50'
-                      )}
-                      onClick={() => toggleTechnician(tech.id)}
-                    >
-                      <div>
-                        <p className="font-medium">{tech.name}</p>
-                        <p className="text-sm text-gray-500">
-                          {tech.employeeId} - {tech.email}
-                        </p>
-                      </div>
-                      {selectedTechnicians.includes(tech.id) && (
-                        <Badge variant="default">Asignado</Badge>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-              {errors.technicianIds && (
-                <p className="text-sm text-red-500">{errors.technicianIds.message}</p>
+              <Label htmlFor="technicianId">Técnico Asignado *</Label>
+              {technicians.length === 0 ? (
+                <div className="text-center py-4 text-muted-foreground border rounded-lg">
+                  <p className="text-sm">No hay técnicos registrados.</p>
+                  <p className="text-xs mt-1">
+                    Para agregar técnicos, crea usuarios con rol TECHNICIAN en la configuración.
+                  </p>
+                </div>
+              ) : (
+                <Select
+                  value={watch('technicianId')}
+                  onValueChange={(value) => setValue('technicianId', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona un técnico" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {technicians.map((tech) => (
+                      <SelectItem key={tech.id} value={tech.id}>
+                        {tech.name} - {tech.employeeId}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
-              {selectedTechnicians.length > 0 && (
-                <p className="text-sm text-gray-600">
-                  {selectedTechnicians.length} técnico(s) seleccionado(s)
-                </p>
+              {errors.technicianId && (
+                <p className="text-sm text-red-500">{errors.technicianId.message}</p>
               )}
             </div>
 

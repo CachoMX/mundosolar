@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     const clientId = payload.clientId as string
 
     const body = await request.json()
-    const { type, title, description, solarSystemId, preferredDate } = body
+    const { type, title, description, solarSystemId, plantName, preferredDate } = body
 
     // Validate required fields
     if (!type || !title) {
@@ -54,8 +54,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // If solarSystemId is provided, verify it belongs to this client
+    // Try to find solar system in database (for Growatt plants, solarSystemId might be plantId which doesn't exist in DB)
+    let validSolarSystemId: string | null = null
+    let plantNameForTitle: string | null = plantName || null
+
     if (solarSystemId) {
+      // First try to find by ID
       const solarSystem = await prisma.solarSystem.findFirst({
         where: {
           id: solarSystemId,
@@ -63,11 +67,23 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      if (!solarSystem) {
-        return NextResponse.json(
-          { success: false, error: 'Sistema solar no encontrado' },
-          { status: 404 }
-        )
+      if (solarSystem) {
+        validSolarSystemId = solarSystem.id
+      } else {
+        // If not found by ID, try to find by name (solarSystemId might be a Growatt plantName)
+        const systemByName = await prisma.solarSystem.findFirst({
+          where: {
+            systemName: solarSystemId,
+            clientId: clientId
+          }
+        })
+
+        if (systemByName) {
+          validSolarSystemId = systemByName.id
+        } else {
+          // Not found in DB - this is likely a Growatt plant, use the plant name (not ID)
+          plantNameForTitle = plantName || solarSystemId
+        }
       }
     }
 
@@ -87,14 +103,19 @@ export async function POST(request: NextRequest) {
       select: { firstName: true, lastName: true }
     })
 
+    // Build title with plant name if not found in DB
+    const finalTitle = plantNameForTitle && !validSolarSystemId
+      ? `${title} - Planta: ${plantNameForTitle}`
+      : title
+
     const maintenanceRequest = await prisma.maintenanceRecord.create({
       data: {
         clientId,
-        solarSystemId: solarSystemId || null,
+        solarSystemId: validSolarSystemId,
         type: type as any,
         priority: 'SCHEDULED',
         status: 'PENDING_APPROVAL',
-        title,
+        title: finalTitle,
         description: description || null,
         requestedDate: new Date(),
         scheduledDate: scheduledDateValue,

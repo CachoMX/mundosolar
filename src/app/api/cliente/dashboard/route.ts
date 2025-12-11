@@ -57,11 +57,15 @@ export async function GET(request: NextRequest) {
       where: { clientId }
     })
 
-    // Get maintenance records for this client
+    // Get maintenance records for this client (only non-cancelled, active ones)
     const maintenanceRecords = await prisma.maintenanceRecord.findMany({
-      where: { clientId },
-      orderBy: { scheduledDate: 'desc' },
-      take: 10,
+      where: {
+        clientId,
+        status: {
+          in: ['PENDING_APPROVAL', 'SCHEDULED', 'IN_PROGRESS']
+        }
+      },
+      orderBy: { scheduledDate: 'asc' },
       select: {
         id: true,
         title: true,
