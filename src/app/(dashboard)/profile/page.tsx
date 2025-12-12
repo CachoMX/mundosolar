@@ -1,17 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Loader2, User, Mail, Calendar, Save, ArrowLeft, Lock, Eye, EyeOff } from 'lucide-react'
+import { Loader2, User, Mail, Calendar, Save, ArrowLeft, Lock, Eye, EyeOff, Camera, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 export default function ProfilePage() {
   const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [user, setUser] = useState<any>(null)
@@ -20,6 +21,12 @@ export default function ProfilePage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+
+  // Profile image state
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [imageError, setImageError] = useState('')
+  const [imageSuccess, setImageSuccess] = useState('')
 
   // Password change state
   const [currentPassword, setCurrentPassword] = useState('')
@@ -60,11 +67,85 @@ export default function ProfilePage() {
       setEmail(authUser.email || '')
       setName(authUser.user_metadata?.name || '')
       setPhone(authUser.user_metadata?.phone || '')
+      setAvatarUrl(authUser.user_metadata?.avatar_url || null)
     } catch (error) {
       console.error('Error loading profile:', error)
       setErrorMessage('Error al cargar el perfil')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setImageError('')
+    setImageSuccess('')
+    setUploadingImage(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+
+      const response = await fetch('/api/auth/profile-image', {
+        method: 'POST',
+        body: formData
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        setImageError(result.error || 'Error al subir imagen')
+        return
+      }
+
+      setAvatarUrl(result.imageUrl)
+      setImageSuccess('Imagen actualizada correctamente')
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setImageSuccess(''), 3000)
+    } catch (err) {
+      console.error('Error uploading image:', err)
+      setImageError('Error al subir imagen')
+    } finally {
+      setUploadingImage(false)
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const handleDeleteImage = async () => {
+    if (!avatarUrl) return
+
+    setImageError('')
+    setImageSuccess('')
+    setUploadingImage(true)
+
+    try {
+      const response = await fetch('/api/auth/profile-image', {
+        method: 'DELETE'
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        setImageError(result.error || 'Error al eliminar imagen')
+        return
+      }
+
+      setAvatarUrl(null)
+      setImageSuccess('Imagen eliminada correctamente')
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setImageSuccess(''), 3000)
+    } catch (err) {
+      console.error('Error deleting image:', err)
+      setImageError('Error al eliminar imagen')
+    } finally {
+      setUploadingImage(false)
     }
   }
 
@@ -209,21 +290,80 @@ export default function ProfilePage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center space-x-4 mb-6">
-              <Avatar className="h-20 w-20">
-                <AvatarImage src="" alt={name || email} />
-                <AvatarFallback className="text-2xl">
-                  {userInitials}
-                </AvatarFallback>
-              </Avatar>
-              <div>
+              <div className="relative group">
+                <Avatar className="h-20 w-20">
+                  <AvatarImage src={avatarUrl || ''} alt={name || email} />
+                  <AvatarFallback className="text-2xl">
+                    {userInitials}
+                  </AvatarFallback>
+                </Avatar>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingImage}
+                  className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                >
+                  {uploadingImage ? (
+                    <Loader2 className="h-6 w-6 text-white animate-spin" />
+                  ) : (
+                    <Camera className="h-6 w-6 text-white" />
+                  )}
+                </button>
+              </div>
+              <div className="flex-1">
                 <h3 className="text-xl font-semibold">{name || 'Usuario'}</h3>
                 <p className="text-gray-600">{email}</p>
                 <div className="flex items-center text-sm text-gray-500 mt-1">
                   <Calendar className="h-4 w-4 mr-1" />
                   Miembro desde {createdAt}
                 </div>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingImage}
+                  >
+                    <Camera className="h-4 w-4 mr-1" />
+                    Cambiar foto
+                  </Button>
+                  {avatarUrl && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDeleteImage}
+                      disabled={uploadingImage}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Eliminar
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
+            {imageError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+                {imageError}
+              </div>
+            )}
+            {imageSuccess && (
+              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-4">
+                {imageSuccess}
+              </div>
+            )}
+            <p className="text-xs text-gray-500">
+              Formatos permitidos: JPG, PNG, WEBP, GIF. Tamaño máximo: 5MB.
+            </p>
           </CardContent>
         </Card>
 

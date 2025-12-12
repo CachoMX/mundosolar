@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -46,33 +46,22 @@ interface ClientDashboardData {
   }[]
 }
 
+const fetchDashboardData = async (): Promise<ClientDashboardData> => {
+  const response = await fetch('/api/cliente/dashboard')
+  const result = await response.json()
+  if (!result.success) {
+    throw new Error(result.error || 'Error al cargar datos')
+  }
+  return result.data
+}
+
 export default function ClienteDashboardPage() {
   const router = useRouter()
-  const [data, setData] = useState<ClientDashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
-
-  const fetchDashboardData = async () => {
-    try {
-      const response = await fetch('/api/cliente/dashboard')
-      const result = await response.json()
-
-      if (result.success) {
-        setData(result.data)
-      } else {
-        setError(result.error || 'Error al cargar datos')
-      }
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err)
-      setError('Error al conectar con el servidor')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { data, isLoading: loading, error } = useQuery({
+    queryKey: ['cliente-dashboard'],
+    queryFn: fetchDashboardData,
+  })
 
   if (loading) {
     return (
@@ -91,7 +80,7 @@ export default function ClienteDashboardPage() {
         <div className="text-center">
           <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2">Error al cargar dashboard</h3>
-          <p className="text-sm text-muted-foreground mb-4">{error}</p>
+          <p className="text-sm text-muted-foreground mb-4">{error.message}</p>
         </div>
       </div>
     )

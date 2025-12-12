@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -45,11 +46,16 @@ interface Metrics {
   co2Saved: number
 }
 
-export default function SistemaPage() {
-  const [loading, setLoading] = useState(true)
-  const [systemData, setSystemData] = useState<SystemData | null>(null)
-  const [error, setError] = useState<string | null>(null)
+const fetchSystemData = async (): Promise<SystemData> => {
+  const response = await fetch('/api/cliente/sistema')
+  const result = await response.json()
+  if (!result.success) {
+    throw new Error(result.error || 'Error al cargar datos del sistema')
+  }
+  return result.data
+}
 
+export default function SistemaPage() {
   // History modal state
   const [historyModalOpen, setHistoryModalOpen] = useState(false)
   const [historyPeriod, setHistoryPeriod] = useState<'7' | '14' | '30' | '90'>('30')
@@ -58,9 +64,15 @@ export default function SistemaPage() {
   const [historyMetrics, setHistoryMetrics] = useState<Metrics | null>(null)
   const [expectedDaily, setExpectedDaily] = useState(0)
 
-  useEffect(() => {
-    loadSystemData()
-  }, [])
+  const {
+    data: systemData,
+    isLoading: loading,
+    error,
+    refetch
+  } = useQuery({
+    queryKey: ['cliente-sistema'],
+    queryFn: fetchSystemData,
+  })
 
   useEffect(() => {
     if (historyModalOpen) {
@@ -68,28 +80,8 @@ export default function SistemaPage() {
     }
   }, [historyModalOpen, historyPeriod])
 
-  const loadSystemData = async (showLoading = true) => {
-    if (showLoading) setLoading(true)
-    try {
-      const response = await fetch('/api/cliente/sistema')
-      const result = await response.json()
-
-      if (result.success) {
-        setSystemData(result.data)
-        setError(null)
-      } else {
-        setError(result.error || 'Error al cargar datos del sistema')
-      }
-    } catch (err) {
-      console.error('Error loading system data:', err)
-      setError('Error al cargar datos del sistema')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const handleRefresh = () => {
-    loadSystemData(false)
+    refetch()
   }
 
   const loadHistory = async () => {
@@ -183,7 +175,7 @@ export default function SistemaPage() {
         </div>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-center text-muted-foreground">{error}</p>
+            <p className="text-center text-muted-foreground">{error.message}</p>
           </CardContent>
         </Card>
       </div>

@@ -43,7 +43,9 @@ export async function GET(request: NextRequest) {
         address: true,
         city: true,
         state: true,
-        isActive: true
+        isActive: true,
+        createdAt: true,
+        profileImage: true
       }
     })
 

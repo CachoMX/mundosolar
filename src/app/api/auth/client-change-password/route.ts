@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
 
     // Update the client's password and set requirePasswordChange to false
     await prisma.client.update({
-      where: { id: clientId },
+      where: { id: targetClientId },
       data: {
         password: hashedPassword,
         requirePasswordChange: false

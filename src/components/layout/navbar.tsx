@@ -45,6 +45,12 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  // Prevent hydration mismatch by only rendering dropdowns after mount
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (isClientPortal) {
@@ -227,6 +233,11 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
         {/* Right side actions */}
         <div className="flex items-center space-x-4">
           {/* Notifications */}
+          {!mounted ? (
+            <Button variant="ghost" size="sm" className="relative">
+              <Bell className="h-5 w-5" />
+            </Button>
+          ) : (
           <DropdownMenu open={notificationsOpen} onOpenChange={setNotificationsOpen}>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="relative">
@@ -311,8 +322,16 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
 
           {/* User Menu */}
+          {!mounted ? (
+            <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback>U</AvatarFallback>
+              </Avatar>
+            </Button>
+          ) : (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -355,6 +374,7 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
         </div>
       </div>
     </nav>

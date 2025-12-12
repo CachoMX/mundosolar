@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -76,12 +77,49 @@ interface SolarSystem {
   capacity: number | null
 }
 
+interface MaintenanceData {
+  metrics: DashboardMetrics
+  events: CalendarEvent[]
+}
+
+const fetchMaintenanceData = async (): Promise<MaintenanceData> => {
+  // Load dashboard metrics
+  const metricsRes = await fetch('/api/cliente/mantenimientos/dashboard')
+  const metricsData = await metricsRes.json()
+
+  if (!metricsData.success) {
+    throw new Error(metricsData.error || 'Error al cargar métricas')
+  }
+
+  // Load calendar events (30 days range)
+  const startDate = new Date()
+  startDate.setDate(startDate.getDate() - 7)
+  const endDate = new Date()
+  endDate.setDate(endDate.getDate() + 30)
+
+  const eventsRes = await fetch(
+    `/api/cliente/mantenimientos/calendar?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
+  )
+  const eventsData = await eventsRes.json()
+
+  const formattedEvents = eventsData.success
+    ? eventsData.data.map((event: any) => ({
+        ...event,
+        start: new Date(event.start),
+        end: new Date(event.end)
+      }))
+    : []
+
+  return {
+    metrics: metricsData.data,
+    events: formattedEvents
+  }
+}
+
 export default function MantenimientosPage() {
   const searchParams = useSearchParams()
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
-  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const queryClient = useQueryClient()
   const [view, setView] = useState<'calendar' | 'table'>('calendar')
-  const [loading, setLoading] = useState(true)
   const [dismissedRejections, setDismissedRejections] = useState<string[]>([])
 
   // Modal state
@@ -111,13 +149,24 @@ export default function MantenimientosPage() {
     preferredPeriod: 'AM' as 'AM' | 'PM'
   })
 
+  const {
+    data: maintenanceData,
+    isLoading: loading,
+    refetch: loadData
+  } = useQuery({
+    queryKey: ['cliente-mantenimientos'],
+    queryFn: fetchMaintenanceData,
+  })
+
+  const metrics = maintenanceData?.metrics || null
+  const events = maintenanceData?.events || []
+
   useEffect(() => {
     // Load dismissed rejections from localStorage
     const dismissed = localStorage.getItem('dismissedRejections')
     if (dismissed) {
       setDismissedRejections(JSON.parse(dismissed))
     }
-    loadData()
   }, [])
 
   // Handle selected maintenance from URL params
@@ -131,44 +180,6 @@ export default function MantenimientosPage() {
       }
     }
   }, [searchParams, events])
-
-  const loadData = async () => {
-    try {
-      setLoading(true)
-
-      // Load dashboard metrics
-      const metricsRes = await fetch('/api/cliente/mantenimientos/dashboard')
-      const metricsData = await metricsRes.json()
-
-      if (metricsData.success) {
-        setMetrics(metricsData.data)
-      }
-
-      // Load calendar events (30 days range)
-      const startDate = new Date()
-      startDate.setDate(startDate.getDate() - 7)
-      const endDate = new Date()
-      endDate.setDate(endDate.getDate() + 30)
-
-      const eventsRes = await fetch(
-        `/api/cliente/mantenimientos/calendar?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
-      )
-      const eventsData = await eventsRes.json()
-
-      if (eventsData.success) {
-        const formattedEvents = eventsData.data.map((event: any) => ({
-          ...event,
-          start: new Date(event.start),
-          end: new Date(event.end)
-        }))
-        setEvents(formattedEvents)
-      }
-    } catch (error) {
-      console.error('Error loading maintenance data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const loadSolarSystems = async () => {
     try {
@@ -245,7 +256,7 @@ export default function MantenimientosPage() {
         localStorage.setItem('dismissedRejections', JSON.stringify(newDismissed))
         setShowRejectionModal(false)
         setSelectedRejectedEvent(null)
-        loadData()
+        queryClient.invalidateQueries({ queryKey: ['cliente-mantenimientos'] })
       } else {
         alert(result.error || 'Error al eliminar')
       }
@@ -317,7 +328,8 @@ export default function MantenimientosPage() {
         // Reload data after successful request
         setTimeout(() => {
           setShowRequestModal(false)
-          loadData()
+          queryClient.invalidateQueries({ queryKey: ['cliente-mantenimientos'] })
+          queryClient.invalidateQueries({ queryKey: ['cliente-dashboard'] })
         }, 2000)
       } else {
         setRequestMessage({ type: 'error', text: data.error || 'Error al enviar solicitud' })

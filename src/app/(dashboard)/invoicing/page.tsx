@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Plus, FileText, DollarSign, AlertCircle, CheckCircle, Loader2, Eye, Edit, Calendar, User, MoreVertical, Stamp, X, Download } from 'lucide-react'
-import { 
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -42,29 +42,23 @@ interface Invoice {
   }[]
 }
 
+const fetchInvoices = async (): Promise<Invoice[]> => {
+  const response = await fetch('/api/invoices')
+  const result = await response.json()
+  if (!result.success) {
+    throw new Error(result.error || 'Error al cargar facturas')
+  }
+  return result.data
+}
+
 export default function InvoicingPage() {
   const router = useRouter()
-  const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
 
-  useEffect(() => {
-    fetchInvoices()
-  }, [])
-
-  const fetchInvoices = async () => {
-    try {
-      const response = await fetch('/api/invoices')
-      const result = await response.json()
-      
-      if (result.success) {
-        setInvoices(result.data)
-      }
-    } catch (error) {
-      console.error('Error fetching invoices:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { data: invoices = [], isLoading: loading } = useQuery({
+    queryKey: ['invoices'],
+    queryFn: fetchInvoices,
+  })
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -100,12 +94,13 @@ export default function InvoicingPage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' }
       })
-      
+
       const result = await response.json()
-      
+
       if (result.success) {
         // Refresh invoices
-        fetchInvoices()
+        queryClient.invalidateQueries({ queryKey: ['invoices'] })
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
         alert('Factura timbrada exitosamente')
       } else {
         alert(result.error || 'Error al timbrar factura')
@@ -118,18 +113,19 @@ export default function InvoicingPage() {
 
   const handleCancel = async (invoiceId: string) => {
     if (!confirm('¿Está seguro de cancelar esta factura?')) return
-    
+
     try {
       const response = await fetch(`/api/invoices/${invoiceId}/cancel`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' }
       })
-      
+
       const result = await response.json()
-      
+
       if (result.success) {
         // Refresh invoices
-        fetchInvoices()
+        queryClient.invalidateQueries({ queryKey: ['invoices'] })
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
         alert('Factura cancelada exitosamente')
       } else {
         alert(result.error || 'Error al cancelar factura')

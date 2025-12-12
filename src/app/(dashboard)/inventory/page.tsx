@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Plus, Package, AlertTriangle, TrendingUp, Loader2, RefreshCw } from 'lucide-react'
@@ -29,40 +29,23 @@ interface InventoryData {
   }[]
 }
 
-export default function InventoryPage() {
-  const [inventoryData, setInventoryData] = useState<InventoryData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchInventoryData = async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await fetch('/api/inventory')
-
-      if (!response.ok) {
-        throw new Error('Error al obtener datos del inventario')
-      }
-
-      const result = await response.json()
-
-      if (result.success) {
-        setInventoryData(result.data)
-      } else {
-        throw new Error(result.error || 'Error desconocido')
-      }
-    } catch (err) {
-      console.error('Error fetching inventory:', err)
-      setError(err instanceof Error ? err.message : 'Error desconocido')
-    } finally {
-      setLoading(false)
-    }
+const fetchInventoryData = async (): Promise<InventoryData> => {
+  const response = await fetch('/api/inventory')
+  if (!response.ok) {
+    throw new Error('Error al obtener datos del inventario')
   }
+  const result = await response.json()
+  if (!result.success) {
+    throw new Error(result.error || 'Error desconocido')
+  }
+  return result.data
+}
 
-  useEffect(() => {
-    fetchInventoryData()
-  }, [])
+export default function InventoryPage() {
+  const { data: inventoryData, isLoading: loading, error, refetch } = useQuery({
+    queryKey: ['inventory'],
+    queryFn: fetchInventoryData,
+  })
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-MX', {
@@ -111,7 +94,7 @@ export default function InventoryPage() {
       <div className="flex-1 space-y-4 p-4 pt-6">
         <div className="flex items-center justify-between">
           <h2 className="text-3xl font-bold tracking-tight">Inventario</h2>
-          <Button onClick={fetchInventoryData}>
+          <Button onClick={() => refetch()}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Reintentar
           </Button>
@@ -122,7 +105,7 @@ export default function InventoryPage() {
             <div className="text-center">
               <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">Error al cargar datos</h3>
-              <p className="text-sm text-muted-foreground mb-4">{error}</p>
+              <p className="text-sm text-muted-foreground mb-4">{error.message}</p>
             </div>
           </CardContent>
         </Card>
@@ -135,7 +118,7 @@ export default function InventoryPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Inventario</h2>
         <div className="flex space-x-2">
-          <Button variant="outline" onClick={fetchInventoryData}>
+          <Button variant="outline" onClick={() => refetch()}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Actualizar
           </Button>

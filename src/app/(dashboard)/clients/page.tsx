@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Users, Search, Mail, Phone, MapPin, Building2, User, Loader2, Edit, Trash2 } from 'lucide-react'
+import { Plus, Users, Search, Mail, Phone, MapPin, Building2, User, Loader2, Edit, Trash2, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
 interface Client {
@@ -23,29 +24,22 @@ interface Client {
   createdAt: string
 }
 
+const fetchClientsData = async (): Promise<Client[]> => {
+  const response = await fetch('/api/clients')
+  const result = await response.json()
+  if (!result.success) {
+    throw new Error(result.error || 'Error al cargar clientes')
+  }
+  return result.data
+}
+
 export default function ClientsPage() {
-  const [clients, setClients] = useState<Client[]>([])
-  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
 
-  useEffect(() => {
-    fetchClients()
-  }, [])
-
-  const fetchClients = async () => {
-    try {
-      const response = await fetch('/api/clients')
-      const result = await response.json()
-      
-      if (result.success) {
-        setClients(result.data)
-      }
-    } catch (error) {
-      console.error('Error fetching clients:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { data: clients = [], isLoading, error, refetch } = useQuery({
+    queryKey: ['clients'],
+    queryFn: fetchClientsData,
+  })
 
   const filteredClients = clients.filter(client => {
     const query = searchQuery.toLowerCase()
@@ -142,7 +136,16 @@ export default function ClientsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {error ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Error al cargar clientes</h3>
+                <p className="text-sm text-muted-foreground mb-4">{error.message}</p>
+                <Button onClick={() => refetch()}>Reintentar</Button>
+              </div>
+            </div>
+          ) : isLoading ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
                 <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />

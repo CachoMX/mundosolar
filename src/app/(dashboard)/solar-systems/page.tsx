@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -63,25 +64,51 @@ interface ClientGrowattData {
   cacheAge?: number | null
 }
 
+interface ClientSystemsResponse {
+  data: ClientGrowattData[]
+  lastSync: string | null
+}
+
+const fetchClientSystems = async (): Promise<ClientSystemsResponse> => {
+  const response = await fetch('/api/admin/solar-systems/cached')
+  if (!response.ok) {
+    throw new Error('Error al obtener sistemas de clientes')
+  }
+  const result = await response.json()
+  if (!result.success) {
+    throw new Error(result.error || 'Error al obtener sistemas de clientes')
+  }
+  return { data: result.data, lastSync: result.lastSync }
+}
+
 export default function SolarSystemsPage() {
+  const queryClient = useQueryClient()
   const [growattData, setGrowattData] = useState<GrowattData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState("todos-sistemas")
-  
-  // Admin client systems data
-  const [clientSystems, setClientSystems] = useState<ClientGrowattData[]>([])
-  const [clientsLoading, setClientsLoading] = useState(false)
-  const [clientsError, setClientsError] = useState<string | null>(null)
 
   // History modal state
   const [historyModalOpen, setHistoryModalOpen] = useState(false)
   const [selectedClient, setSelectedClient] = useState<{ id: string, name: string } | null>(null)
 
-  // Last sync timestamp
-  const [lastSync, setLastSync] = useState<string | null>(null)
+  // Manual sync state
   const [syncingManually, setSyncingManually] = useState(false)
+
+  // Admin client systems data with React Query
+  const {
+    data: clientSystemsData,
+    isLoading: clientsLoading,
+    error: clientsError,
+    refetch: refetchClientSystems
+  } = useQuery({
+    queryKey: ['client-solar-systems'],
+    queryFn: fetchClientSystems,
+  })
+
+  const clientSystems = clientSystemsData?.data || []
+  const lastSync = clientSystemsData?.lastSync || null
 
   const fetchGrowattData = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -189,36 +216,6 @@ export default function SolarSystemsPage() {
     }
   }
 
-  const fetchAllClientSystems = async () => {
-    setClientsLoading(true)
-    setClientsError(null)
-
-    try {
-      // Fetch cached data for all clients (fast, from database)
-      const response = await fetch('/api/admin/solar-systems/cached')
-
-      if (!response.ok) {
-        throw new Error('Error al obtener sistemas de clientes')
-      }
-
-      const result = await response.json()
-
-      if (!result.success) {
-        throw new Error(result.error || 'Error al obtener sistemas de clientes')
-      }
-
-      // Data is already in the expected format from the API
-      setClientSystems(result.data)
-      setLastSync(result.lastSync)
-
-    } catch (err) {
-      console.error('Error fetching client systems:', err)
-      setClientsError(err instanceof Error ? err.message : 'Error desconocido')
-    } finally {
-      setClientsLoading(false)
-    }
-  }
-
   // Manual sync - triggers the cron job to refresh all data from Growatt
   const triggerManualSync = async () => {
     setSyncingManually(true)
@@ -229,7 +226,8 @@ export default function SolarSystemsPage() {
 
       if (response.ok) {
         // Refresh the cached data after sync
-        await fetchAllClientSystems()
+        await refetchClientSystems()
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
       } else {
         console.error('Failed to trigger manual sync')
       }
@@ -245,15 +243,13 @@ export default function SolarSystemsPage() {
     if (activeTab === 'mi-sistema') {
       fetchGrowattData()
     }
-    // Always fetch client systems for admin view
-    fetchAllClientSystems()
   }, [activeTab])
 
   const handleRefresh = () => {
     if (activeTab === 'mi-sistema') {
       fetchGrowattData(true)
     } else {
-      fetchAllClientSystems()
+      refetchClientSystems()
     }
   }
 
@@ -652,8 +648,8 @@ export default function SolarSystemsPage() {
                 <div className="text-center">
                   <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Error al cargar sistemas de clientes</h3>
-                  <p className="text-sm text-muted-foreground mb-4">{clientsError}</p>
-                  <Button onClick={() => fetchAllClientSystems()} variant="outline">
+                  <p className="text-sm text-muted-foreground mb-4">{clientsError.message}</p>
+                  <Button onClick={() => refetchClientSystems()} variant="outline">
                     <RefreshCw className="mr-2 h-4 w-4" />
                     Reintentar
                   </Button>

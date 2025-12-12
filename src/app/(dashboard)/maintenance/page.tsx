@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -51,60 +52,57 @@ interface CalendarEvent {
   resource: any
 }
 
+const fetchMetrics = async (): Promise<DashboardMetrics> => {
+  const response = await fetch('/api/maintenance/dashboard')
+  const result = await response.json()
+  if (!result.success) {
+    throw new Error(result.error || 'Error al cargar métricas')
+  }
+  return result.data
+}
+
+const fetchCalendarEvents = async (): Promise<CalendarEvent[]> => {
+  const startDate = new Date()
+  startDate.setDate(startDate.getDate() - 7)
+  const endDate = new Date()
+  endDate.setDate(endDate.getDate() + 30)
+
+  const response = await fetch(
+    `/api/maintenance/calendar?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
+  )
+  const result = await response.json()
+  if (!result.success) {
+    throw new Error(result.error || 'Error al cargar eventos')
+  }
+  return result.data.map((event: any) => ({
+    ...event,
+    start: new Date(event.start),
+    end: new Date(event.end)
+  }))
+}
+
 export default function MaintenancePage() {
   const router = useRouter()
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
-  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const queryClient = useQueryClient()
   const [view, setView] = useState<'calendar' | 'table'>('calendar')
-  const [loading, setLoading] = useState(true)
   const [showFormModal, setShowFormModal] = useState(false)
 
-  useEffect(() => {
-    loadData()
-  }, [])
+  const { data: metrics, isLoading: metricsLoading } = useQuery({
+    queryKey: ['maintenance-metrics'],
+    queryFn: fetchMetrics,
+  })
 
-  const loadData = async () => {
-    try {
-      setLoading(true)
+  const { data: events = [], isLoading: eventsLoading } = useQuery({
+    queryKey: ['maintenance-calendar'],
+    queryFn: fetchCalendarEvents,
+  })
 
-      // Load dashboard metrics
-      const metricsRes = await fetch('/api/maintenance/dashboard')
-      const metricsData = await metricsRes.json()
+  const loading = metricsLoading || eventsLoading
 
-      if (metricsData.success) {
-        setMetrics(metricsData.data)
-      }
-
-      // Load calendar events (30 days range)
-      const startDate = new Date()
-      startDate.setDate(startDate.getDate() - 7)
-      const endDate = new Date()
-      endDate.setDate(endDate.getDate() + 30)
-
-      const eventsRes = await fetch(
-        `/api/maintenance/calendar?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
-      )
-      const eventsData = await eventsRes.json()
-
-      if (eventsData.success) {
-        const formattedEvents = eventsData.data.map((event: any) => {
-          // Parse dates and adjust for timezone to show correct day
-          const startDate = new Date(event.start)
-          const endDate = new Date(event.end)
-
-          return {
-            ...event,
-            start: startDate,
-            end: endDate
-          }
-        })
-        setEvents(formattedEvents)
-      }
-    } catch (error) {
-      console.error('Error loading maintenance data:', error)
-    } finally {
-      setLoading(false)
-    }
+  const handleSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ['maintenance-metrics'] })
+    queryClient.invalidateQueries({ queryKey: ['maintenance-calendar'] })
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
   }
 
   const getStatusBadge = (status: string) => {
@@ -184,7 +182,7 @@ export default function MaintenancePage() {
       <MaintenanceFormModal
         open={showFormModal}
         onClose={() => setShowFormModal(false)}
-        onSuccess={loadData}
+        onSuccess={handleSuccess}
       />
 
       {/* Metrics Cards */}
