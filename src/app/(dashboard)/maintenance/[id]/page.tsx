@@ -68,10 +68,11 @@ interface MaintenanceDetail {
   technicians: Array<{
     id: string
     role: string
-    user: {
+    technician: {
       id: string
       name: string
       email: string
+      image: string | null
     }
   }>
   parts: Array<{
@@ -327,6 +328,16 @@ export default function MaintenanceDetailPage() {
     return labels[priority] || priority
   }
 
+  const getRoleLabel = (role: string) => {
+    const labels: Record<string, string> = {
+      LEAD: 'Principal',
+      Lead: 'Principal',
+      ASSISTANT: 'Asistente',
+      Assistant: 'Asistente',
+    }
+    return labels[role] || role
+  }
+
   const getStatusBadge = (status: string) => {
     const variants: Record<
       string,
@@ -477,7 +488,7 @@ export default function MaintenanceDetailPage() {
               <Calendar className="h-4 w-4 text-muted-foreground" />
               <span className="font-medium">Programado:</span>
               <span>
-                {format(new Date(maintenance.scheduledDate), 'dd/MM/yyyy HH:mm', {
+                {format(new Date(maintenance.scheduledDate), 'dd/MM/yyyy hh:mm a', {
                   locale: es,
                 })}
               </span>
@@ -487,7 +498,7 @@ export default function MaintenanceDetailPage() {
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <span className="font-medium">Iniciado:</span>
                 <span>
-                  {format(new Date(maintenance.startedDate), 'dd/MM/yyyy HH:mm', {
+                  {format(new Date(maintenance.startedDate), 'dd/MM/yyyy hh:mm a', {
                     locale: es,
                   })}
                 </span>
@@ -498,7 +509,7 @@ export default function MaintenanceDetailPage() {
                 <CheckCircle2 className="h-4 w-4 text-green-500" />
                 <span className="font-medium">Completado:</span>
                 <span>
-                  {format(new Date(maintenance.completedDate), 'dd/MM/yyyy HH:mm', {
+                  {format(new Date(maintenance.completedDate), 'dd/MM/yyyy hh:mm a', {
                     locale: es,
                   })}
                 </span>
@@ -564,11 +575,11 @@ export default function MaintenanceDetailPage() {
               {maintenance.technicians.map((tech) => (
                 <div key={tech.id} className="flex items-center gap-3 p-3 border rounded-lg">
                   <div className="flex-1">
-                    <p className="font-medium">{tech.user?.name || 'Sin nombre'}</p>
-                    <p className="text-sm text-muted-foreground">{tech.user?.email || ''}</p>
+                    <p className="font-medium">{tech.technician?.name || 'Sin nombre'}</p>
+                    <p className="text-sm text-muted-foreground">{tech.technician?.email || ''}</p>
                     {tech.role && (
                       <Badge variant="outline" className="mt-1">
-                        {tech.role}
+                        {getRoleLabel(tech.role)}
                       </Badge>
                     )}
                   </div>
@@ -640,7 +651,7 @@ export default function MaintenanceDetailPage() {
                   <div className="flex items-center gap-2">
                     {getStatusBadge(history.status)}
                     <span className="text-sm text-muted-foreground">
-                      {format(new Date(history.changedAt), 'dd/MM/yyyy HH:mm', { locale: es })}
+                      {format(new Date(history.changedAt), 'dd/MM/yyyy hh:mm a', { locale: es })}
                     </span>
                   </div>
                   <p className="text-sm text-muted-foreground mt-1">

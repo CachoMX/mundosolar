@@ -68,7 +68,7 @@ export default function SolarSystemsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
-  const [activeTab, setActiveTab] = useState("mi-sistema")
+  const [activeTab, setActiveTab] = useState("todos-sistemas")
   
   // Admin client systems data
   const [clientSystems, setClientSystems] = useState<ClientGrowattData[]>([])
@@ -368,7 +368,6 @@ export default function SolarSystemsPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
-          <TabsTrigger value="mi-sistema">Mi Sistema</TabsTrigger>
           <TabsTrigger value="todos-sistemas">Todos los Sistemas</TabsTrigger>
         </TabsList>
 

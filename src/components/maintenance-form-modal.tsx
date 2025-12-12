@@ -28,6 +28,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { Checkbox } from '@/components/ui/checkbox'
 import { CalendarIcon, Loader2, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -41,11 +42,13 @@ const maintenanceSchema = z.object({
   scheduledDate: z.date({
     required_error: 'Fecha programada es requerida',
   }),
-  scheduledTime: z.string().min(1, 'Hora programada es requerida'),
+  scheduledHour: z.string().min(1, 'Hora es requerida'),
+  scheduledMinute: z.string().min(1, 'Minuto es requerido'),
+  scheduledPeriod: z.enum(['AM', 'PM']),
   title: z.string().min(3, 'Título debe tener al menos 3 caracteres'),
   description: z.string().optional(),
   privateNotes: z.string().optional(),
-  technicianId: z.string().min(1, 'Técnico es requerido'),
+  technicianIds: z.array(z.string()).min(1, 'Al menos un técnico es requerido'),
 })
 
 type MaintenanceFormData = z.infer<typeof maintenanceSchema>
@@ -101,13 +104,16 @@ export function MaintenanceFormModal({
     defaultValues: {
       type: 'PREVENTIVE',
       priority: 'SCHEDULED',
-      scheduledTime: '09:00',
-      technicianId: '',
+      scheduledHour: '09',
+      scheduledMinute: '00',
+      scheduledPeriod: 'AM',
+      technicianIds: [],
     },
   })
 
   const selectedClientId = watch('clientId')
   const scheduledDate = watch('scheduledDate')
+  const selectedTechnicianIds = watch('technicianIds') || []
 
   // Load initial data
   useEffect(() => {
@@ -136,17 +142,22 @@ export function MaintenanceFormModal({
       setValue('priority', editData.priority)
       const editDate = new Date(editData.scheduledDate)
       setValue('scheduledDate', editDate)
-      // Extract time from the scheduled date
-      const hours = String(editDate.getHours()).padStart(2, '0')
+      // Extract time from the scheduled date and convert to 12h format
+      let hours = editDate.getHours()
       const minutes = String(editDate.getMinutes()).padStart(2, '0')
-      setValue('scheduledTime', `${hours}:${minutes}`)
+      const period = hours >= 12 ? 'PM' : 'AM'
+      if (hours > 12) hours -= 12
+      if (hours === 0) hours = 12
+      setValue('scheduledHour', String(hours).padStart(2, '0'))
+      setValue('scheduledMinute', minutes)
+      setValue('scheduledPeriod', period)
       setValue('title', editData.title)
       setValue('description', editData.description || '')
       setValue('privateNotes', editData.privateNotes || '')
 
-      // Get first technician ID if exists
-      const techId = editData.technicians?.[0]?.technicianId || ''
-      setValue('technicianId', techId)
+      // Get all technician IDs
+      const techIds = editData.technicians?.map((t: any) => t.technicianId) || []
+      setValue('technicianIds', techIds)
     }
   }, [editData, open])
 
@@ -180,17 +191,31 @@ export function MaintenanceFormModal({
     try {
       setLoading(true)
 
-      // Format date with selected time
+      // Convert 12h format to 24h format
+      let hour24 = parseInt(data.scheduledHour)
+      if (data.scheduledPeriod === 'PM' && hour24 !== 12) {
+        hour24 += 12
+      } else if (data.scheduledPeriod === 'AM' && hour24 === 12) {
+        hour24 = 0
+      }
+      const timeString = `${hour24.toString().padStart(2, '0')}:${data.scheduledMinute}`
+
+      // Format date with selected time (without Z to use local time)
       const year = data.scheduledDate.getFullYear()
       const month = String(data.scheduledDate.getMonth() + 1).padStart(2, '0')
       const day = String(data.scheduledDate.getDate()).padStart(2, '0')
-      const scheduledDateStr = `${year}-${month}-${day}T${data.scheduledTime}:00.000Z`
+      const scheduledDateStr = `${year}-${month}-${day}T${timeString}:00`
 
       const payload = {
-        ...data,
-        scheduledDate: scheduledDateStr,
+        clientId: data.clientId,
         solarSystemId: data.solarSystemId || null,
-        technicianIds: [data.technicianId], // Convert single ID to array for API
+        type: data.type,
+        priority: data.priority,
+        title: data.title,
+        description: data.description,
+        privateNotes: data.privateNotes,
+        scheduledDate: scheduledDateStr,
+        technicianIds: data.technicianIds,
       }
 
       const url = editData
@@ -337,54 +362,94 @@ export function MaintenanceFormModal({
               </div>
             </div>
 
-            {/* Scheduled Date and Time */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Fecha Programada *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        'w-full justify-start text-left font-normal',
-                        !scheduledDate && 'text-muted-foreground'
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {scheduledDate ? (
-                        format(scheduledDate, 'PPP', { locale: es })
-                      ) : (
-                        <span>Selecciona una fecha</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={scheduledDate}
-                      onSelect={(date) => date && setValue('scheduledDate', date)}
-                      initialFocus
-                      locale={es}
-                    />
-                  </PopoverContent>
-                </Popover>
-                {errors.scheduledDate && (
-                  <p className="text-sm text-red-500">{errors.scheduledDate.message}</p>
-                )}
-              </div>
+            {/* Scheduled Date */}
+            <div className="space-y-2">
+              <Label>Fecha Programada *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      'w-full justify-start text-left font-normal',
+                      !scheduledDate && 'text-muted-foreground'
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {scheduledDate ? (
+                      format(scheduledDate, 'PPP', { locale: es })
+                    ) : (
+                      <span>Selecciona una fecha</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={scheduledDate}
+                    onSelect={(date) => date && setValue('scheduledDate', date)}
+                    initialFocus
+                    locale={es}
+                  />
+                </PopoverContent>
+              </Popover>
+              {errors.scheduledDate && (
+                <p className="text-sm text-red-500">{errors.scheduledDate.message}</p>
+              )}
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="scheduledTime">Hora *</Label>
-                <Input
-                  id="scheduledTime"
-                  type="time"
-                  {...register('scheduledTime')}
-                  className="w-full"
-                />
-                {errors.scheduledTime && (
-                  <p className="text-sm text-red-500">{errors.scheduledTime.message}</p>
-                )}
+            {/* Scheduled Time - 12h format like client page */}
+            <div className="space-y-2">
+              <Label>Hora Programada *</Label>
+              <div className="flex gap-2">
+                {/* Hour selector (01-12) */}
+                <Select
+                  value={watch('scheduledHour')}
+                  onValueChange={(value) => setValue('scheduledHour', value)}
+                >
+                  <SelectTrigger className="w-20">
+                    <SelectValue placeholder="Hora" />
+                  </SelectTrigger>
+                  <SelectContent position="popper" sideOffset={4}>
+                    {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((hour) => (
+                      <SelectItem key={hour} value={hour}>{hour}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <span className="flex items-center text-lg">:</span>
+
+                {/* Minute selector (00, 05, 10, ..., 55) */}
+                <Select
+                  value={watch('scheduledMinute')}
+                  onValueChange={(value) => setValue('scheduledMinute', value)}
+                >
+                  <SelectTrigger className="w-20">
+                    <SelectValue placeholder="Min" />
+                  </SelectTrigger>
+                  <SelectContent position="popper" sideOffset={4}>
+                    {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map((minute) => (
+                      <SelectItem key={minute} value={minute}>{minute}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* AM/PM selector */}
+                <Select
+                  value={watch('scheduledPeriod')}
+                  onValueChange={(value) => setValue('scheduledPeriod', value as 'AM' | 'PM')}
+                >
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent position="popper" sideOffset={4}>
+                    <SelectItem value="AM">AM</SelectItem>
+                    <SelectItem value="PM">PM</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+              {errors.scheduledHour && (
+                <p className="text-sm text-red-500">{errors.scheduledHour.message}</p>
+              )}
             </div>
 
             {/* Title */}
@@ -422,9 +487,9 @@ export function MaintenanceFormModal({
               />
             </div>
 
-            {/* Technician Assignment */}
+            {/* Technician Assignment - Multiple selection */}
             <div className="space-y-2">
-              <Label htmlFor="technicianId">Técnico Asignado *</Label>
+              <Label>Técnicos Asignados *</Label>
               {technicians.length === 0 ? (
                 <div className="text-center py-4 text-muted-foreground border rounded-lg">
                   <p className="text-sm">No hay técnicos registrados.</p>
@@ -433,24 +498,38 @@ export function MaintenanceFormModal({
                   </p>
                 </div>
               ) : (
-                <Select
-                  value={watch('technicianId')}
-                  onValueChange={(value) => setValue('technicianId', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona un técnico" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {technicians.map((tech) => (
-                      <SelectItem key={tech.id} value={tech.id}>
+                <div className="border rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto">
+                  {technicians.map((tech) => (
+                    <div key={tech.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`tech-${tech.id}`}
+                        checked={selectedTechnicianIds.includes(tech.id)}
+                        onCheckedChange={(checked) => {
+                          const currentIds = selectedTechnicianIds || []
+                          if (checked) {
+                            setValue('technicianIds', [...currentIds, tech.id])
+                          } else {
+                            setValue('technicianIds', currentIds.filter(id => id !== tech.id))
+                          }
+                        }}
+                      />
+                      <label
+                        htmlFor={`tech-${tech.id}`}
+                        className="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                      >
                         {tech.name} - {tech.employeeId}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      </label>
+                    </div>
+                  ))}
+                </div>
               )}
-              {errors.technicianId && (
-                <p className="text-sm text-red-500">{errors.technicianId.message}</p>
+              {selectedTechnicianIds.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {selectedTechnicianIds.length} técnico(s) seleccionado(s)
+                </p>
+              )}
+              {errors.technicianIds && (
+                <p className="text-sm text-red-500">{errors.technicianIds.message}</p>
               )}
             </div>
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { waitUntil } from '@vercel/functions'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -309,22 +310,9 @@ async function cacheGrowattData(
 }
 
 /**
- * GET /api/cron/sync-growatt-data
- *
- * Fetches Growatt data for all clients with credentials and caches it
+ * Background sync process - runs after response is sent
  */
-export async function GET(request: NextRequest) {
-  // Security: Verify cron secret
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    )
-  }
-
+async function runGrowattSync() {
   try {
     // Get all clients with Growatt credentials from the clients table
     const clientsWithCredentials = await prisma.client.findMany({
@@ -415,22 +403,44 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`[Cron] Sync complete: ${results.success} success, ${results.failed} failed`)
-
-    return NextResponse.json({
-      success: true,
-      message: 'Growatt data sync completed',
-      results,
-    })
+    return results
   } catch (error) {
     console.error('[Cron] Fatal error during sync:', error)
+    throw error
+  }
+}
+
+/**
+ * GET /api/cron/sync-growatt-data
+ *
+ * Fetches Growatt data for all clients with credentials and caches it
+ * Returns immediately and processes in background using waitUntil
+ */
+export async function GET(request: NextRequest) {
+  // Security: Verify cron secret
+  const authHeader = request.headers.get('authorization')
+  const cronSecret = process.env.CRON_SECRET
+
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
+      { error: 'Unauthorized' },
+      { status: 401 }
     )
   }
+
+  const startedAt = new Date().toISOString()
+
+  // Start the sync process in the background
+  // This allows the response to be sent immediately while processing continues
+  waitUntil(runGrowattSync())
+
+  // Return immediately so cron-job.org doesn't timeout
+  return NextResponse.json({
+    success: true,
+    message: 'Growatt sync started in background',
+    startedAt,
+    note: 'Processing continues in background. Check Vercel logs for results.',
+  })
 }
 
 /**
