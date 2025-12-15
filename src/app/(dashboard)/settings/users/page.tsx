@@ -42,7 +42,9 @@ export default function UsersPage() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    password: '',
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
     role: 'USER',
     department: '',
     employeeId: ''
@@ -104,7 +106,9 @@ export default function UsersPage() {
       setFormData({
         name: user.name || '',
         email: user.email,
-        password: '',
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
         role: user.role,
         department: user.department || '',
         employeeId: user.employeeId || ''
@@ -114,7 +118,9 @@ export default function UsersPage() {
       setFormData({
         name: '',
         email: '',
-        password: '',
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
         role: 'USER',
         department: '',
         employeeId: ''
@@ -129,7 +135,9 @@ export default function UsersPage() {
     setFormData({
       name: '',
       email: '',
-      password: '',
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
       role: 'USER',
       department: '',
       employeeId: ''
@@ -255,18 +263,56 @@ export default function UsersPage() {
                 />
               </div>
 
-              <div>
-                <Label htmlFor="password">
-                  Contraseña {editingUser && '(dejar en blanco para no cambiar)'}
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder={editingUser ? 'Nueva contraseña (opcional)' : 'Contraseña'}
-                />
-              </div>
+              {editingUser ? (
+                <>
+                  <div className="border-t pt-4 mt-2">
+                    <p className="text-sm font-medium mb-3 text-muted-foreground">Cambiar Contraseña (opcional)</p>
+                    <div className="space-y-3">
+                      <div>
+                        <Label htmlFor="currentPassword">Contraseña Actual</Label>
+                        <Input
+                          id="currentPassword"
+                          type="password"
+                          value={formData.currentPassword}
+                          onChange={(e) => setFormData({ ...formData, currentPassword: e.target.value })}
+                          placeholder="Ingresa la contraseña actual"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="newPassword">Nueva Contraseña</Label>
+                        <Input
+                          id="newPassword"
+                          type="password"
+                          value={formData.newPassword}
+                          onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
+                          placeholder="Mínimo 6 caracteres"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="confirmPassword">Confirmar Nueva Contraseña</Label>
+                        <Input
+                          id="confirmPassword"
+                          type="password"
+                          value={formData.confirmPassword}
+                          onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                          placeholder="Repite la nueva contraseña"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <Label htmlFor="newPassword">Contraseña</Label>
+                  <Input
+                    id="newPassword"
+                    type="password"
+                    value={formData.newPassword}
+                    onChange={(e) => setFormData({ ...formData, newPassword: e.target.value, confirmPassword: e.target.value })}
+                    placeholder="Contraseña inicial"
+                  />
+                </div>
+              )}
 
               <div>
                 <Label htmlFor="role">Rol</Label>

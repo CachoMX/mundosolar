@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await request.json()
-    
+
     // Create client in database
     const client = await withRetry(() => prisma.client.create({
       data: {
@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
         rfc: data.rfc || null,
         curp: data.curp || null,
         regimenFiscal: data.regimenFiscal || null,
+        identificationNumber: data.identificationNumber || null,
         growattUsername: data.growattUsername || null,
         growattPassword: data.growattPassword || null,
         expectedDailyGeneration: data.expectedDailyGeneration || null,
@@ -70,6 +71,35 @@ export async function POST(request: NextRequest) {
         isActive: true
       }
     }))
+
+    // Handle CFE receipt data if provided
+    const hasCfeData = data.cfeRpu || data.cfeMeterNumber || data.cfeRmu || data.cfeAccountNumber ||
+                       data.cfeMeterType || data.cfeTariff || data.cfePhases || data.cfeWires ||
+                       data.cfeInstalledLoad || data.cfeContractedDemand || data.cfeVoltageLevel ||
+                       data.cfeBranch || data.cfeFolio || data.cfeReceiptFileUrl
+
+    if (hasCfeData) {
+      await withRetry(() => prisma.cfeReceipt.create({
+        data: {
+          clientId: client.id,
+          rpu: data.cfeRpu || null,
+          meterNumber: data.cfeMeterNumber || null,
+          rmu: data.cfeRmu || null,
+          accountNumber: data.cfeAccountNumber || null,
+          meterType: data.cfeMeterType || null,
+          tariff: data.cfeTariff || null,
+          phases: data.cfePhases || null,
+          wires: data.cfeWires || null,
+          installedLoad: data.cfeInstalledLoad || null,
+          contractedDemand: data.cfeContractedDemand || null,
+          voltageLevel: data.cfeVoltageLevel || null,
+          mediumVoltage: data.cfeMediumVoltage || false,
+          cfeBranch: data.cfeBranch || null,
+          cfeFolio: data.cfeFolio || null,
+          receiptFileUrl: data.cfeReceiptFileUrl || null
+        }
+      }))
+    }
 
     return NextResponse.json({
       success: true,

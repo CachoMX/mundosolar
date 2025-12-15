@@ -122,6 +122,7 @@ model Client {
   rfc         String?
   curp        String?
   regimenFiscal String?
+  identificationNumber String? // INE/IFE number
   neighborhood String?
   
   // Growatt Integration fields
@@ -139,8 +140,38 @@ model Client {
   growattCredentials GrowattCredentials[]
   growattHistory   GrowattDailyHistory[]
   notifications    Notification[]
+  cfeReceipts      CfeReceipt[]
 
   @@map("clients")
+}
+
+// CFE Receipt Data (Comisión Federal de Electricidad)
+model CfeReceipt {
+  id                String   @id @default(cuid())
+  clientId          String
+  rpu               String?  // Registro Permanente Único
+  meterNumber       String?  // Número de medidor
+  rmu               String?  // RMU
+  accountNumber     String?  // Número de cuenta CFE
+  meterType         String?  // Tipo de medidor (Digital, Analógico)
+  tariff            String?  // Tarifa (1, 1A, 1B, 1C, DAC, etc.)
+  phases            Int?     // Número de fases
+  wires             Int?     // Número de hilos
+  installedLoad     Decimal? @db.Decimal(10, 2) // Carga instalada (kW)
+  contractedDemand  Decimal? @db.Decimal(10, 2) // Demanda contratada (kW)
+  voltageLevel      Decimal? @db.Decimal(10, 2) // Nivel de tensión (V)
+  mediumVoltage     Boolean  @default(false) // Media tensión
+  cfeBranch         String?  // Sucursal CFE
+  cfeFolio          String?  // Folio CFE
+  receiptFileUrl    String?  // URL del archivo del recibo CFE (Supabase Storage)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId]) // One CFE receipt per client
+  @@map("cfe_receipts")
 }
 
 model FiscalData {

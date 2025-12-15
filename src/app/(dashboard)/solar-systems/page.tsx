@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -82,7 +81,6 @@ const fetchClientSystems = async (): Promise<ClientSystemsResponse> => {
 }
 
 export default function SolarSystemsPage() {
-  const queryClient = useQueryClient()
   const [growattData, setGrowattData] = useState<GrowattData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -96,19 +94,29 @@ export default function SolarSystemsPage() {
   // Manual sync state
   const [syncingManually, setSyncingManually] = useState(false)
 
-  // Admin client systems data with React Query
-  const {
-    data: clientSystemsData,
-    isLoading: clientsLoading,
-    error: clientsError,
-    refetch: refetchClientSystems
-  } = useQuery({
-    queryKey: ['client-solar-systems'],
-    queryFn: fetchClientSystems,
-  })
+  // Admin client systems data state
+  const [clientSystems, setClientSystems] = useState<ClientGrowattData[]>([])
+  const [lastSync, setLastSync] = useState<string | null>(null)
+  const [clientsLoading, setClientsLoading] = useState(true)
+  const [clientsError, setClientsError] = useState<Error | null>(null)
 
-  const clientSystems = clientSystemsData?.data || []
-  const lastSync = clientSystemsData?.lastSync || null
+  const refetchClientSystems = useCallback(async () => {
+    try {
+      setClientsLoading(true)
+      setClientsError(null)
+      const data = await fetchClientSystems()
+      setClientSystems(data.data)
+      setLastSync(data.lastSync)
+    } catch (err) {
+      setClientsError(err instanceof Error ? err : new Error('Error desconocido'))
+    } finally {
+      setClientsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    refetchClientSystems()
+  }, [])
 
   const fetchGrowattData = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
@@ -227,7 +235,6 @@ export default function SolarSystemsPage() {
       if (response.ok) {
         // Refresh the cached data after sync
         await refetchClientSystems()
-        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
       } else {
         console.error('Failed to trigger manual sync')
       }

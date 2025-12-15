@@ -1,8 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -83,26 +82,36 @@ const fetchCalendarEvents = async (): Promise<CalendarEvent[]> => {
 
 export default function MaintenancePage() {
   const router = useRouter()
-  const queryClient = useQueryClient()
   const [view, setView] = useState<'calendar' | 'table'>('calendar')
   const [showFormModal, setShowFormModal] = useState(false)
 
-  const { data: metrics, isLoading: metricsLoading } = useQuery({
-    queryKey: ['maintenance-metrics'],
-    queryFn: fetchMetrics,
-  })
+  // Data state
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const { data: events = [], isLoading: eventsLoading } = useQuery({
-    queryKey: ['maintenance-calendar'],
-    queryFn: fetchCalendarEvents,
-  })
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true)
+      const [metricsData, eventsData] = await Promise.all([
+        fetchMetrics(),
+        fetchCalendarEvents()
+      ])
+      setMetrics(metricsData)
+      setEvents(eventsData)
+    } catch (error) {
+      console.error('Error loading maintenance data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  const loading = metricsLoading || eventsLoading
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const handleSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: ['maintenance-metrics'] })
-    queryClient.invalidateQueries({ queryKey: ['maintenance-calendar'] })
-    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+    loadData()
   }
 
   const getStatusBadge = (status: string) => {

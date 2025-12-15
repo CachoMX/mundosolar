@@ -8,8 +8,42 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, Save, User, Building, MapPin, Phone, Mail, FileText, Loader2, Sun, Key } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ArrowLeft, Save, User, Building, MapPin, FileText, Loader2, Sun, Key, Zap, Plus, Trash2, Wrench, StickyNote, Upload, File, X, ExternalLink } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { Checkbox } from '@/components/ui/checkbox'
 import Link from 'next/link'
+
+// Solar Panel interface
+interface SolarPanel {
+  id: string
+  brand: string
+  model: string
+  quantity: number
+  wattsPerPanel: number
+}
+
+// Inverter interface
+interface Inverter {
+  id: string
+  brand: string
+  model: string
+  quantity: number
+  capacityWatts: number
+}
+
+// Contact Settings interface
+interface ContactSettings {
+  contact_name: string
+  contact_position: string
+  contact_address: string
+  contact_neighborhood: string
+  contact_city: string
+  contact_state: string
+  contact_postal_code: string
+  contact_phone: string
+  contact_email: string
+}
 
 interface ClientFormData {
   // Basic Info
@@ -24,6 +58,7 @@ interface ClientFormData {
   rfc: string
   curp: string
   regimenFiscal: string
+  identificationNumber: string // INE/IFE
   
   // Address
   address: string
@@ -41,6 +76,26 @@ interface ClientFormData {
   growattUsername: string
   growattPassword: string
   expectedDailyGeneration: number // kWh expected per day
+
+  // CFE Receipt Data
+  cfeRpu: string
+  cfeMeterNumber: string
+  cfeRmu: string
+  cfeAccountNumber: string
+  cfeMeterType: string
+  cfeTariff: string
+  cfePhases: number
+  cfeWires: number
+  cfeInstalledLoad: number
+  cfeContractedDemand: number
+  cfeVoltageLevel: number
+  cfeMediumVoltage: boolean
+  cfeBranch: string
+  cfeFolio: string
+  cfeReceiptFileUrl: string // URL del archivo del recibo CFE
+
+  // Solar System Data
+  monthlyGeneration: number // KWH/MES
 }
 
 const MEXICAN_STATES = [
@@ -81,6 +136,20 @@ export default function EditClientPage() {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [panels, setPanels] = useState<SolarPanel[]>([])
+  const [inverters, setInverters] = useState<Inverter[]>([])
+  const [contactSettings, setContactSettings] = useState<ContactSettings>({
+    contact_name: '',
+    contact_position: '',
+    contact_address: '',
+    contact_neighborhood: '',
+    contact_city: '',
+    contact_state: '',
+    contact_postal_code: '',
+    contact_phone: '',
+    contact_email: ''
+  })
   const [formData, setFormData] = useState<ClientFormData>({
     type: 'personal',
     firstName: '',
@@ -91,6 +160,7 @@ export default function EditClientPage() {
     rfc: '',
     curp: '',
     regimenFiscal: '',
+    identificationNumber: '',
     address: '',
     neighborhood: '',
     city: '',
@@ -101,12 +171,41 @@ export default function EditClientPage() {
     isActive: true,
     growattUsername: '',
     growattPassword: '',
-    expectedDailyGeneration: 0
+    expectedDailyGeneration: 0,
+    cfeRpu: '',
+    cfeMeterNumber: '',
+    cfeRmu: '',
+    cfeAccountNumber: '',
+    cfeMeterType: '',
+    cfeTariff: '',
+    cfePhases: 0,
+    cfeWires: 0,
+    cfeInstalledLoad: 0,
+    cfeContractedDemand: 0,
+    cfeVoltageLevel: 0,
+    cfeMediumVoltage: false,
+    cfeBranch: '',
+    cfeFolio: '',
+    cfeReceiptFileUrl: '',
+    monthlyGeneration: 0
   })
 
   useEffect(() => {
     fetchClient()
+    fetchContactSettings()
   }, [clientId])
+
+  const fetchContactSettings = async () => {
+    try {
+      const response = await fetch('/api/settings/contact')
+      const result = await response.json()
+      if (result.success) {
+        setContactSettings(result.data)
+      }
+    } catch (error) {
+      console.error('Error fetching contact settings:', error)
+    }
+  }
 
   const fetchClient = async () => {
     try {
@@ -119,6 +218,9 @@ export default function EditClientPage() {
         // Determine if this is a business (heuristic: if lastName is empty, it's probably business)
         const isBusinessType = !client.lastName || client.lastName.trim() === ''
         
+        // Get CFE receipt data if available
+        const cfeReceipt = client.cfeReceipts?.[0] || null
+
         setFormData({
           type: isBusinessType ? 'business' : 'personal',
           firstName: isBusinessType ? client.firstName : (client.firstName || ''),
@@ -129,6 +231,7 @@ export default function EditClientPage() {
           rfc: client.rfc || '',
           curp: client.curp || '',
           regimenFiscal: client.regimenFiscal || '',
+          identificationNumber: client.identificationNumber || '',
           address: client.address || '',
           neighborhood: client.neighborhood || '',
           city: client.city || '',
@@ -139,7 +242,23 @@ export default function EditClientPage() {
           isActive: client.isActive,
           growattUsername: client.growattUsername || '',
           growattPassword: client.growattPassword || '',
-          expectedDailyGeneration: client.expectedDailyGeneration || 0
+          expectedDailyGeneration: client.expectedDailyGeneration || 0,
+          cfeRpu: cfeReceipt?.rpu || '',
+          cfeMeterNumber: cfeReceipt?.meterNumber || '',
+          cfeRmu: cfeReceipt?.rmu || '',
+          cfeAccountNumber: cfeReceipt?.accountNumber || '',
+          cfeMeterType: cfeReceipt?.meterType || '',
+          cfeTariff: cfeReceipt?.tariff || '',
+          cfePhases: cfeReceipt?.phases || 0,
+          cfeWires: cfeReceipt?.wires || 0,
+          cfeInstalledLoad: cfeReceipt?.installedLoad || 0,
+          cfeContractedDemand: cfeReceipt?.contractedDemand || 0,
+          cfeVoltageLevel: cfeReceipt?.voltageLevel || 0,
+          cfeMediumVoltage: cfeReceipt?.mediumVoltage || false,
+          cfeBranch: cfeReceipt?.cfeBranch || '',
+          cfeFolio: cfeReceipt?.cfeFolio || '',
+          cfeReceiptFileUrl: cfeReceipt?.receiptFileUrl || '',
+          monthlyGeneration: client.monthlyGeneration || 0
         })
       } else {
         throw new Error(result.error || 'Cliente no encontrado')
@@ -159,6 +278,138 @@ export default function EditClientPage() {
       [field]: value
     }))
   }
+
+  // Panel management functions
+  const addPanel = () => {
+    setPanels(prev => [...prev, {
+      id: crypto.randomUUID(),
+      brand: '',
+      model: '',
+      quantity: 1,
+      wattsPerPanel: 0
+    }])
+  }
+
+  const updatePanel = (id: string, field: keyof SolarPanel, value: string | number) => {
+    setPanels(prev => prev.map(panel =>
+      panel.id === id ? { ...panel, [field]: value } : panel
+    ))
+  }
+
+  const removePanel = (id: string) => {
+    setPanels(prev => prev.filter(panel => panel.id !== id))
+  }
+
+  // Inverter management functions
+  const addInverter = () => {
+    setInverters(prev => [...prev, {
+      id: crypto.randomUUID(),
+      brand: '',
+      model: '',
+      quantity: 1,
+      capacityWatts: 0
+    }])
+  }
+
+  const updateInverter = (id: string, field: keyof Inverter, value: string | number) => {
+    setInverters(prev => prev.map(inverter =>
+      inverter.id === id ? { ...inverter, [field]: value } : inverter
+    ))
+  }
+
+  const removeInverter = (id: string) => {
+    setInverters(prev => prev.filter(inverter => inverter.id !== id))
+  }
+
+  // CFE Receipt file upload handlers
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type (PDF and images)
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
+    if (!allowedTypes.includes(file.type)) {
+      alert('Solo se permiten archivos PDF o imágenes (JPG, PNG)')
+      return
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024 // 5MB
+    if (file.size > maxSize) {
+      alert('El archivo no debe superar los 5MB')
+      return
+    }
+
+    setUploading(true)
+
+    try {
+      const supabase = createClient()
+
+      // Generate unique filename
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${clientId}-${Date.now()}.${fileExt}`
+      const filePath = `cfe-receipts/${fileName}`
+
+      // Upload to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        })
+
+      if (error) {
+        throw error
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('documents')
+        .getPublicUrl(filePath)
+
+      // Update form data
+      handleInputChange('cfeReceiptFileUrl', publicUrl)
+
+    } catch (error) {
+      console.error('Error uploading file:', error)
+      alert('Error al subir el archivo. Por favor intente de nuevo.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleRemoveFile = async () => {
+    if (!formData.cfeReceiptFileUrl) return
+
+    try {
+      const supabase = createClient()
+
+      // Extract file path from URL
+      const url = new URL(formData.cfeReceiptFileUrl)
+      const pathParts = url.pathname.split('/documents/')
+      if (pathParts.length > 1) {
+        const filePath = pathParts[1]
+
+        // Delete from storage
+        await supabase.storage
+          .from('documents')
+          .remove([filePath])
+      }
+
+      // Clear from form data
+      handleInputChange('cfeReceiptFileUrl', '')
+
+    } catch (error) {
+      console.error('Error removing file:', error)
+      // Still clear from form even if storage delete fails
+      handleInputChange('cfeReceiptFileUrl', '')
+    }
+  }
+
+  // Calculate totals for solar system
+  const totalPanels = panels.reduce((sum, p) => sum + p.quantity, 0)
+  const totalPanelCapacity = panels.reduce((sum, p) => sum + (p.quantity * p.wattsPerPanel), 0) / 1000 // kW
+  const totalInverterCapacity = inverters.reduce((sum, i) => sum + (i.quantity * i.capacityWatts), 0) // W
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -224,313 +475,921 @@ export default function EditClientPage() {
       </div>
 
       <form onSubmit={handleSubmit}>
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Client Type */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <User className="mr-2 h-5 w-5" />
-                Tipo de Cliente
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Select value={formData.type} onValueChange={(value: 'personal' | 'business') => handleInputChange('type', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar tipo de cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="personal">Persona Física</SelectItem>
-                  <SelectItem value="business">Persona Moral (Empresa)</SelectItem>
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
+        <Tabs defaultValue="general" className="w-full">
+          <TabsList className="grid w-full grid-cols-5 mb-6">
+            <TabsTrigger value="general" className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              <span className="hidden sm:inline">Información</span>
+            </TabsTrigger>
+            <TabsTrigger value="cfe" className="flex items-center gap-2">
+              <Zap className="h-4 w-4" />
+              <span className="hidden sm:inline">CFE</span>
+            </TabsTrigger>
+            <TabsTrigger value="solar" className="flex items-center gap-2">
+              <Sun className="h-4 w-4" />
+              <span className="hidden sm:inline">Sistema Solar</span>
+            </TabsTrigger>
+            <TabsTrigger value="maintenance" className="flex items-center gap-2">
+              <Wrench className="h-4 w-4" />
+              <span className="hidden sm:inline">Mantenimientos</span>
+            </TabsTrigger>
+            <TabsTrigger value="notes" className="flex items-center gap-2">
+              <StickyNote className="h-4 w-4" />
+              <span className="hidden sm:inline">Notas</span>
+            </TabsTrigger>
+          </TabsList>
 
-          {/* Personal/Business Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                {formData.type === 'business' ? <Building className="mr-2 h-5 w-5" /> : <User className="mr-2 h-5 w-5" />}
-                Información {formData.type === 'business' ? 'Empresarial' : 'Personal'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {formData.type === 'personal' ? (
-                <>
+          {/* TAB: Información General */}
+          <TabsContent value="general">
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Client Type */}
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <User className="mr-2 h-5 w-5" />
+                    Tipo de Cliente
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Select value={formData.type} onValueChange={(value: 'personal' | 'business') => handleInputChange('type', value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar tipo de cliente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="personal">Persona Física</SelectItem>
+                      <SelectItem value="business">Persona Moral (Empresa)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </CardContent>
+              </Card>
+
+              {/* Personal/Business Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    {formData.type === 'business' ? <Building className="mr-2 h-5 w-5" /> : <User className="mr-2 h-5 w-5" />}
+                    Información {formData.type === 'business' ? 'Empresarial' : 'Personal'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {formData.type === 'personal' ? (
+                    <>
+                      <div>
+                        <Label htmlFor="firstName">Nombre *</Label>
+                        <Input
+                          id="firstName"
+                          value={formData.firstName}
+                          onChange={(e) => handleInputChange('firstName', e.target.value)}
+                          placeholder="Ingrese el nombre"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="lastName">Apellido *</Label>
+                        <Input
+                          id="lastName"
+                          value={formData.lastName}
+                          onChange={(e) => handleInputChange('lastName', e.target.value)}
+                          placeholder="Ingrese el apellido"
+                          required
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <Label htmlFor="businessName">Razón Social *</Label>
+                      <Input
+                        id="businessName"
+                        value={formData.businessName}
+                        onChange={(e) => handleInputChange('businessName', e.target.value)}
+                        placeholder="Ingrese la razón social"
+                        required
+                      />
+                    </div>
+                  )}
                   <div>
-                    <Label htmlFor="firstName">Nombre *</Label>
+                    <Label htmlFor="email">Email *</Label>
                     <Input
-                      id="firstName"
-                      value={formData.firstName}
-                      onChange={(e) => handleInputChange('firstName', e.target.value)}
-                      placeholder="Ingrese el nombre"
+                      id="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => handleInputChange('email', e.target.value)}
+                      placeholder="ejemplo@correo.com"
                       required
                     />
                   </div>
                   <div>
-                    <Label htmlFor="lastName">Apellido *</Label>
+                    <Label htmlFor="phone">Teléfono *</Label>
                     <Input
-                      id="lastName"
-                      value={formData.lastName}
-                      onChange={(e) => handleInputChange('lastName', e.target.value)}
-                      placeholder="Ingrese el apellido"
+                      id="phone"
+                      value={formData.phone}
+                      onChange={(e) => handleInputChange('phone', e.target.value)}
+                      placeholder="55 1234 5678"
                       required
                     />
                   </div>
-                </>
-              ) : (
-                <div>
-                  <Label htmlFor="businessName">Razón Social *</Label>
-                  <Input
-                    id="businessName"
-                    value={formData.businessName}
-                    onChange={(e) => handleInputChange('businessName', e.target.value)}
-                    placeholder="Ingrese la razón social"
-                    required
-                  />
-                </div>
-              )}
-              <div>
-                <Label htmlFor="email">Email *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  placeholder="ejemplo@correo.com"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="phone">Teléfono *</Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
-                  placeholder="55 1234 5678"
-                  required
-                />
-              </div>
-            </CardContent>
-          </Card>
+                  {formData.type === 'personal' && (
+                    <div>
+                      <Label htmlFor="identificationNumber">Número de INE/IFE</Label>
+                      <Input
+                        id="identificationNumber"
+                        value={formData.identificationNumber}
+                        onChange={(e) => handleInputChange('identificationNumber', e.target.value)}
+                        placeholder="1234567890123"
+                        maxLength={18}
+                      />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
-          {/* Tax Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <FileText className="mr-2 h-5 w-5" />
-                Información Fiscal
-              </CardTitle>
-              <CardDescription>
-                Datos necesarios para facturación SAT
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="rfc">RFC</Label>
-                <Input
-                  id="rfc"
-                  value={formData.rfc}
-                  onChange={(e) => handleInputChange('rfc', e.target.value.toUpperCase())}
-                  placeholder={formData.type === 'personal' ? 'ABCD123456EFG' : 'ABC123456EFG'}
-                  maxLength={formData.type === 'personal' ? 13 : 12}
-                />
-              </div>
-              {formData.type === 'personal' && (
-                <div>
-                  <Label htmlFor="curp">CURP</Label>
-                  <Input
-                    id="curp"
-                    value={formData.curp}
-                    onChange={(e) => handleInputChange('curp', e.target.value.toUpperCase())}
-                    placeholder="ABCD123456HDFMNR01"
-                    maxLength={18}
-                  />
-                </div>
-              )}
-              <div>
-                <Label htmlFor="regimenFiscal">Régimen Fiscal</Label>
-                <Select value={formData.regimenFiscal} onValueChange={(value) => handleInputChange('regimenFiscal', value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar régimen fiscal" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {REGIMEN_FISCAL.map((regimen) => (
-                      <SelectItem key={regimen} value={regimen}>
-                        {regimen}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Address Information */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <MapPin className="mr-2 h-5 w-5" />
-                Dirección
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-              <div>
-                <Label htmlFor="address">Calle y Número</Label>
-                <Input
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => handleInputChange('address', e.target.value)}
-                  placeholder="Av. Reforma 123"
-                />
-              </div>
-              <div>
-                <Label htmlFor="neighborhood">Colonia</Label>
-                <Input
-                  id="neighborhood"
-                  value={formData.neighborhood}
-                  onChange={(e) => handleInputChange('neighborhood', e.target.value)}
-                  placeholder="Centro"
-                />
-              </div>
-              <div>
-                <Label htmlFor="city">Ciudad</Label>
-                <Input
-                  id="city"
-                  value={formData.city}
-                  onChange={(e) => handleInputChange('city', e.target.value)}
-                  placeholder="Ciudad de México"
-                />
-              </div>
-              <div>
-                <Label htmlFor="state">Estado</Label>
-                <Select value={formData.state} onValueChange={(value) => handleInputChange('state', value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar estado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MEXICAN_STATES.map((state) => (
-                      <SelectItem key={state} value={state}>
-                        {state}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="postalCode">Código Postal</Label>
-                <Input
-                  id="postalCode"
-                  value={formData.postalCode}
-                  onChange={(e) => handleInputChange('postalCode', e.target.value)}
-                  placeholder="06000"
-                  maxLength={5}
-                />
-              </div>
-              <div>
-                <Label htmlFor="country">País</Label>
-                <Input
-                  id="country"
-                  value={formData.country}
-                  onChange={(e) => handleInputChange('country', e.target.value)}
-                  disabled
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Growatt Integration */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Sun className="mr-2 h-5 w-5" />
-                Integración Growatt
-              </CardTitle>
-              <CardDescription>
-                Credenciales para monitoreo automático del sistema solar
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-3">
-              <div>
-                <Label htmlFor="growattUsername">Usuario Growatt</Label>
-                <Input
-                  id="growattUsername"
-                  value={formData.growattUsername}
-                  onChange={(e) => handleInputChange('growattUsername', e.target.value)}
-                  placeholder="usuario@ejemplo.com"
-                />
-              </div>
-              <div>
-                <Label htmlFor="growattPassword">Contraseña Growatt</Label>
-                <Input
-                  id="growattPassword"
-                  type="password"
-                  value={formData.growattPassword}
-                  onChange={(e) => handleInputChange('growattPassword', e.target.value)}
-                  placeholder="••••••••"
-                />
-              </div>
-              <div>
-                <Label htmlFor="expectedDailyGeneration">Generación Esperada (kWh/día)</Label>
-                <Input
-                  id="expectedDailyGeneration"
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={formData.expectedDailyGeneration}
-                  onChange={(e) => handleInputChange('expectedDailyGeneration', parseFloat(e.target.value) || 0)}
-                  placeholder="50.0"
-                />
-              </div>
-              <div className="md:col-span-3 p-3 bg-blue-50 rounded-lg">
-                <div className="flex items-start space-x-2">
-                  <Key className="h-4 w-4 text-blue-500 mt-0.5" />
+              {/* Tax Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <FileText className="mr-2 h-5 w-5" />
+                    Información Fiscal
+                  </CardTitle>
+                  <CardDescription>
+                    Datos necesarios para facturación SAT
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
                   <div>
-                    <p className="text-sm font-medium text-blue-800">Monitoreo Inteligente</p>
-                    <p className="text-xs text-blue-600">
-                      Con estas credenciales, el sistema monitoreará automáticamente la generación solar 
-                      y enviará alertas de mantenimiento cuando la producción esté por debajo de lo esperado.
-                    </p>
+                    <Label htmlFor="rfc">RFC</Label>
+                    <Input
+                      id="rfc"
+                      value={formData.rfc}
+                      onChange={(e) => handleInputChange('rfc', e.target.value.toUpperCase())}
+                      placeholder={formData.type === 'personal' ? 'ABCD123456EFG' : 'ABC123456EFG'}
+                      maxLength={formData.type === 'personal' ? 13 : 12}
+                    />
+                  </div>
+                  {formData.type === 'personal' && (
+                    <div>
+                      <Label htmlFor="curp">CURP</Label>
+                      <Input
+                        id="curp"
+                        value={formData.curp}
+                        onChange={(e) => handleInputChange('curp', e.target.value.toUpperCase())}
+                        placeholder="ABCD123456HDFMNR01"
+                        maxLength={18}
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <Label htmlFor="regimenFiscal">Régimen Fiscal</Label>
+                    <Select value={formData.regimenFiscal} onValueChange={(value) => handleInputChange('regimenFiscal', value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar régimen fiscal" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {REGIMEN_FISCAL.map((regimen) => (
+                          <SelectItem key={regimen} value={regimen}>
+                            {regimen}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Address Information */}
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <MapPin className="mr-2 h-5 w-5" />
+                    Dirección
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <Label htmlFor="address">Calle y Número</Label>
+                    <Input
+                      id="address"
+                      value={formData.address}
+                      onChange={(e) => handleInputChange('address', e.target.value)}
+                      placeholder="Av. Reforma 123"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="neighborhood">Colonia</Label>
+                    <Input
+                      id="neighborhood"
+                      value={formData.neighborhood}
+                      onChange={(e) => handleInputChange('neighborhood', e.target.value)}
+                      placeholder="Centro"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="city">Ciudad</Label>
+                    <Input
+                      id="city"
+                      value={formData.city}
+                      onChange={(e) => handleInputChange('city', e.target.value)}
+                      placeholder="Ciudad de México"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="state">Estado</Label>
+                    <Select value={formData.state} onValueChange={(value) => handleInputChange('state', value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar estado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MEXICAN_STATES.map((state) => (
+                          <SelectItem key={state} value={state}>
+                            {state}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="postalCode">Código Postal</Label>
+                    <Input
+                      id="postalCode"
+                      value={formData.postalCode}
+                      onChange={(e) => handleInputChange('postalCode', e.target.value)}
+                      placeholder="06000"
+                      maxLength={5}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="country">País</Label>
+                    <Input
+                      id="country"
+                      value={formData.country}
+                      onChange={(e) => handleInputChange('country', e.target.value)}
+                      disabled
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Growatt Integration */}
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Sun className="mr-2 h-5 w-5" />
+                    Integración Growatt
+                  </CardTitle>
+                  <CardDescription>
+                    Credenciales para monitoreo automático del sistema solar
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <Label htmlFor="growattUsername">Usuario Growatt</Label>
+                    <Input
+                      id="growattUsername"
+                      value={formData.growattUsername}
+                      onChange={(e) => handleInputChange('growattUsername', e.target.value)}
+                      placeholder="usuario@ejemplo.com"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="growattPassword">Contraseña Growatt</Label>
+                    <Input
+                      id="growattPassword"
+                      type="password"
+                      value={formData.growattPassword}
+                      onChange={(e) => handleInputChange('growattPassword', e.target.value)}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="expectedDailyGeneration">Generación Esperada (kWh/día)</Label>
+                    <Input
+                      id="expectedDailyGeneration"
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={formData.expectedDailyGeneration}
+                      onChange={(e) => handleInputChange('expectedDailyGeneration', parseFloat(e.target.value) || 0)}
+                      placeholder="50.0"
+                    />
+                  </div>
+                  <div className="md:col-span-3 p-3 bg-blue-50 rounded-lg">
+                    <div className="flex items-start space-x-2">
+                      <Key className="h-4 w-4 text-blue-500 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-800">Monitoreo Inteligente</p>
+                        <p className="text-xs text-blue-600">
+                          Con estas credenciales, el sistema monitoreará automáticamente la generación solar
+                          y enviará alertas de mantenimiento cuando la producción esté por debajo de lo esperado.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Status */}
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle>Estado del Cliente</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Select
+                    value={formData.isActive ? 'active' : 'inactive'}
+                    onValueChange={(value) => handleInputChange('isActive', value === 'active')}
+                  >
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Activo</SelectItem>
+                      <SelectItem value="inactive">Inactivo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* TAB: CFE */}
+          <TabsContent value="cfe">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Zap className="mr-2 h-5 w-5" />
+                  Base CFE
+                </CardTitle>
+                <CardDescription>
+                  Información del recibo de luz del cliente
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Recibo CFE File Upload */}
+                <div className="border rounded-lg p-4 bg-muted/30">
+                  <Label className="text-base font-medium mb-3 block">Recibo CFE</Label>
+                  {formData.cfeReceiptFileUrl ? (
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 flex-1 p-3 bg-background rounded border">
+                        <File className="h-5 w-5 text-primary" />
+                        <span className="text-sm truncate flex-1">Recibo CFE subido</span>
+                        <a
+                          href={formData.cfeReceiptFileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline flex items-center gap-1"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          Ver
+                        </a>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleRemoveFile}
+                          className="text-destructive hover:text-destructive h-8 w-8 p-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg bg-background">
+                      <input
+                        type="file"
+                        id="cfeReceiptFile"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                        disabled={uploading}
+                      />
+                      <label
+                        htmlFor="cfeReceiptFile"
+                        className="cursor-pointer flex flex-col items-center"
+                      >
+                        {uploading ? (
+                          <>
+                            <Loader2 className="h-10 w-10 text-muted-foreground animate-spin mb-2" />
+                            <span className="text-sm text-muted-foreground">Subiendo archivo...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-10 w-10 text-muted-foreground mb-2" />
+                            <span className="text-sm font-medium text-primary">Subir recibo CFE</span>
+                            <span className="text-xs text-muted-foreground mt-1">PDF o imagen (máx. 5MB)</span>
+                          </>
+                        )}
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                {/* CFE Data Fields */}
+                <div className="grid gap-4 md:grid-cols-4">
+                <div>
+                  <Label htmlFor="cfeRpu">RPU</Label>
+                  <Input
+                    id="cfeRpu"
+                    value={formData.cfeRpu}
+                    onChange={(e) => handleInputChange('cfeRpu', e.target.value)}
+                    placeholder="208190705269"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="cfeMeterNumber">N° Medidor</Label>
+                  <Input
+                    id="cfeMeterNumber"
+                    value={formData.cfeMeterNumber}
+                    onChange={(e) => handleInputChange('cfeMeterNumber', e.target.value)}
+                    placeholder="25T73E"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="cfeRmu">RMU</Label>
+                  <Input
+                    id="cfeRmu"
+                    value={formData.cfeRmu}
+                    onChange={(e) => handleInputChange('cfeRmu', e.target.value)}
+                    placeholder="28610 25-06-27 FIGJ-881129 001"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="cfeAccountNumber">N° Cuenta CFE</Label>
+                  <Input
+                    id="cfeAccountNumber"
+                    value={formData.cfeAccountNumber}
+                    onChange={(e) => handleInputChange('cfeAccountNumber', e.target.value)}
+                    placeholder="19DF25E031920760"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="cfeMeterType">Tipo de Medidor</Label>
+                  <Select value={formData.cfeMeterType} onValueChange={(value) => handleInputChange('cfeMeterType', value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Digital">Digital</SelectItem>
+                      <SelectItem value="Analógico">Analógico</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="cfeTariff">Tarifa</Label>
+                  <Select value={formData.cfeTariff} onValueChange={(value) => handleInputChange('cfeTariff', value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1</SelectItem>
+                      <SelectItem value="1A">1A</SelectItem>
+                      <SelectItem value="1B">1B</SelectItem>
+                      <SelectItem value="1C">1C</SelectItem>
+                      <SelectItem value="1D">1D</SelectItem>
+                      <SelectItem value="1E">1E</SelectItem>
+                      <SelectItem value="1F">1F</SelectItem>
+                      <SelectItem value="DAC">DAC</SelectItem>
+                      <SelectItem value="PDBT">PDBT</SelectItem>
+                      <SelectItem value="GDBT">GDBT</SelectItem>
+                      <SelectItem value="GDMTH">GDMTH</SelectItem>
+                      <SelectItem value="GDMTO">GDMTO</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="cfePhases">N° Fases</Label>
+                  <Input
+                    id="cfePhases"
+                    type="number"
+                    min="1"
+                    max="3"
+                    value={formData.cfePhases || ''}
+                    onChange={(e) => handleInputChange('cfePhases', parseInt(e.target.value) || 0)}
+                    placeholder="2"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="cfeWires">N° Hilos</Label>
+                  <Input
+                    id="cfeWires"
+                    type="number"
+                    min="1"
+                    max="4"
+                    value={formData.cfeWires || ''}
+                    onChange={(e) => handleInputChange('cfeWires', parseInt(e.target.value) || 0)}
+                    placeholder="3"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="cfeInstalledLoad">Carga Instalada (kW)</Label>
+                  <Input
+                    id="cfeInstalledLoad"
+                    type="number"
+                    step="0.01"
+                    value={formData.cfeInstalledLoad || ''}
+                    onChange={(e) => handleInputChange('cfeInstalledLoad', parseFloat(e.target.value) || 0)}
+                    placeholder="3"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="cfeContractedDemand">Demanda Contratada (kW)</Label>
+                  <Input
+                    id="cfeContractedDemand"
+                    type="number"
+                    step="0.01"
+                    value={formData.cfeContractedDemand || ''}
+                    onChange={(e) => handleInputChange('cfeContractedDemand', parseFloat(e.target.value) || 0)}
+                    placeholder="3"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="cfeVoltageLevel">Nivel Tensión (V)</Label>
+                  <Select
+                    value={formData.cfeVoltageLevel ? String(formData.cfeVoltageLevel) : ''}
+                    onValueChange={(value) => {
+                      handleInputChange('cfeVoltageLevel', value === 'N/A' ? 0 : parseFloat(value))
+                      if (value !== '13200') {
+                        handleInputChange('cfeMediumVoltage', false)
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="N/A">N/A</SelectItem>
+                      <SelectItem value="110">110</SelectItem>
+                      <SelectItem value="13200">13200</SelectItem>
+                      <SelectItem value="220">220</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center space-x-2 pt-6">
+                  <Checkbox
+                    id="cfeMediumVoltage"
+                    checked={formData.cfeMediumVoltage}
+                    onCheckedChange={(checked) => {
+                      handleInputChange('cfeMediumVoltage', checked === true)
+                      if (checked === true) {
+                        handleInputChange('cfeVoltageLevel', 13200)
+                      }
+                    }}
+                  />
+                  <Label htmlFor="cfeMediumVoltage" className="cursor-pointer">Media Tensión</Label>
+                </div>
+                <div>
+                  <Label htmlFor="cfeBranch">Sucursal CFE</Label>
+                  <Select value={formData.cfeBranch} onValueChange={(value) => handleInputChange('cfeBranch', value === 'N/A' ? '' : value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="N/A">N/A</SelectItem>
+                      <SelectItem value="CD GUZMAN">CD GUZMAN</SelectItem>
+                      <SelectItem value="Colima">Colima</SelectItem>
+                      <SelectItem value="Manzanillo">Manzanillo</SelectItem>
+                      <SelectItem value="Tecoman">Tecoman</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="cfeFolio">Folio CFE</Label>
+                  <Input
+                    id="cfeFolio"
+                    value={formData.cfeFolio}
+                    onChange={(e) => handleInputChange('cfeFolio', e.target.value)}
+                    placeholder="Folio del recibo"
+                  />
+                </div>
+
+                {/* Separador */}
+                <div className="md:col-span-4 border-t pt-4 mt-2">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">Datos de Contacto Anexo</h4>
+                  <div className="grid gap-3 md:grid-cols-4 text-sm">
+                    <div>
+                      <span className="text-gray-500">Nombre:</span>
+                      <p className="font-medium">{contactSettings.contact_name || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Puesto:</span>
+                      <p className="font-medium">{contactSettings.contact_position || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Domicilio:</span>
+                      <p className="font-medium">{contactSettings.contact_address || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Colonia:</span>
+                      <p className="font-medium">{contactSettings.contact_neighborhood || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Municipio:</span>
+                      <p className="font-medium">{contactSettings.contact_city || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Estado:</span>
+                      <p className="font-medium">{contactSettings.contact_state || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">C.P.:</span>
+                      <p className="font-medium">{contactSettings.contact_postal_code || '-'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Teléfono:</span>
+                      <p className="font-medium">{contactSettings.contact_phone || '-'}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <span className="text-gray-500">Correo:</span>
+                      <p className="font-medium">{contactSettings.contact_email || '-'}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-          {/* Status and Notes */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle>Estado y Notas</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="isActive">Estado del Cliente</Label>
-                <Select 
-                  value={formData.isActive ? 'active' : 'inactive'} 
-                  onValueChange={(value) => handleInputChange('isActive', value === 'active')}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Activo</SelectItem>
-                    <SelectItem value="inactive">Inactivo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="notes">Notas</Label>
+          {/* TAB: Sistema Solar */}
+          <TabsContent value="solar">
+            <div className="grid gap-6">
+              {/* Paneles Section */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center">
+                        <Sun className="mr-2 h-5 w-5" />
+                        Paneles
+                      </CardTitle>
+                      <CardDescription>
+                        Información de los paneles solares instalados
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <div className="text-right">
+                        <span className="text-muted-foreground">N° Paneles:</span>
+                        <span className="ml-2 font-bold">{totalPanels}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-muted-foreground">Capacidad Instalada:</span>
+                        <span className="ml-2 font-bold">{totalPanelCapacity.toFixed(2)} kW</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {panels.length > 0 && (
+                    <div className="border rounded-lg overflow-hidden mb-4">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="px-4 py-2 text-left font-medium">Marca Panel</th>
+                            <th className="px-4 py-2 text-left font-medium">Cantidad</th>
+                            <th className="px-4 py-2 text-left font-medium">Modelo Panel</th>
+                            <th className="px-4 py-2 text-left font-medium">Watts por Panel</th>
+                            <th className="px-4 py-2 text-left font-medium">Capacidad</th>
+                            <th className="px-4 py-2 w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {panels.map((panel) => (
+                            <tr key={panel.id} className="border-t">
+                              <td className="px-4 py-2">
+                                <Input
+                                  value={panel.brand}
+                                  onChange={(e) => updatePanel(panel.id, 'brand', e.target.value)}
+                                  placeholder="Canadian Solar"
+                                  className="h-8"
+                                />
+                              </td>
+                              <td className="px-4 py-2">
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={panel.quantity}
+                                  onChange={(e) => updatePanel(panel.id, 'quantity', parseInt(e.target.value) || 1)}
+                                  className="h-8 w-20"
+                                />
+                              </td>
+                              <td className="px-4 py-2">
+                                <Input
+                                  value={panel.model}
+                                  onChange={(e) => updatePanel(panel.id, 'model', e.target.value)}
+                                  placeholder="CS6R-410MS"
+                                  className="h-8"
+                                />
+                              </td>
+                              <td className="px-4 py-2">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={panel.wattsPerPanel}
+                                  onChange={(e) => updatePanel(panel.id, 'wattsPerPanel', parseInt(e.target.value) || 0)}
+                                  placeholder="410"
+                                  className="h-8 w-24"
+                                />
+                              </td>
+                              <td className="px-4 py-2 font-medium">
+                                {((panel.quantity * panel.wattsPerPanel) / 1000).toFixed(2)} kW
+                              </td>
+                              <td className="px-4 py-2">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removePanel(panel.id)}
+                                  className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <Button type="button" variant="outline" size="sm" onClick={addPanel}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Agregar Panel
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Inversores Section */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center">
+                        <Zap className="mr-2 h-5 w-5" />
+                        Inversores
+                      </CardTitle>
+                      <CardDescription>
+                        Información de los inversores instalados
+                      </CardDescription>
+                    </div>
+                    <div className="text-right text-sm">
+                      <span className="text-muted-foreground">Capacidad Inversor(es):</span>
+                      <span className="ml-2 font-bold">{totalInverterCapacity.toLocaleString()} W</span>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {inverters.length > 0 && (
+                    <div className="border rounded-lg overflow-hidden mb-4">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="px-4 py-2 text-left font-medium">Cantidad</th>
+                            <th className="px-4 py-2 text-left font-medium">Marca Inversor</th>
+                            <th className="px-4 py-2 text-left font-medium">Modelo Inversor</th>
+                            <th className="px-4 py-2 text-left font-medium">Capacidad (W)</th>
+                            <th className="px-4 py-2 w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {inverters.map((inverter) => (
+                            <tr key={inverter.id} className="border-t">
+                              <td className="px-4 py-2">
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={inverter.quantity}
+                                  onChange={(e) => updateInverter(inverter.id, 'quantity', parseInt(e.target.value) || 1)}
+                                  className="h-8 w-20"
+                                />
+                              </td>
+                              <td className="px-4 py-2">
+                                <Input
+                                  value={inverter.brand}
+                                  onChange={(e) => updateInverter(inverter.id, 'brand', e.target.value)}
+                                  placeholder="Growatt"
+                                  className="h-8"
+                                />
+                              </td>
+                              <td className="px-4 py-2">
+                                <Input
+                                  value={inverter.model}
+                                  onChange={(e) => updateInverter(inverter.id, 'model', e.target.value)}
+                                  placeholder="MIN 6000TL-X"
+                                  className="h-8"
+                                />
+                              </td>
+                              <td className="px-4 py-2">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={inverter.capacityWatts}
+                                  onChange={(e) => updateInverter(inverter.id, 'capacityWatts', parseInt(e.target.value) || 0)}
+                                  placeholder="6000"
+                                  className="h-8 w-28"
+                                />
+                              </td>
+                              <td className="px-4 py-2">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeInverter(inverter.id)}
+                                  className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <Button type="button" variant="outline" size="sm" onClick={addInverter}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Agregar Inversor
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Monthly Generation */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Gen. Mensual</CardTitle>
+                  <CardDescription>
+                    Generación mensual estimada del sistema
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4">
+                    <div className="w-48">
+                      <Label htmlFor="monthlyGeneration">KWH/MES</Label>
+                      <Input
+                        id="monthlyGeneration"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.monthlyGeneration || ''}
+                        onChange={(e) => handleInputChange('monthlyGeneration', parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="text-sm text-muted-foreground pt-6">
+                      kWh esperados por mes
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* TAB: Mantenimientos */}
+          <TabsContent value="maintenance">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Wrench className="mr-2 h-5 w-5" />
+                  Mantenimientos
+                </CardTitle>
+                <CardDescription>
+                  Historial de mantenimientos del cliente
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8 text-muted-foreground">
+                  <Wrench className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                  <p>Los mantenimientos de este cliente se mostrarán aquí.</p>
+                  <p className="text-sm mt-2">
+                    Puede ver y gestionar los mantenimientos desde la sección de{' '}
+                    <Link href="/maintenance" className="text-primary hover:underline">
+                      Mantenimientos
+                    </Link>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* TAB: Notas */}
+          <TabsContent value="notes">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <StickyNote className="mr-2 h-5 w-5" />
+                  Notas
+                </CardTitle>
+                <CardDescription>
+                  Notas y observaciones sobre el cliente
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
                 <Textarea
                   id="notes"
                   value={formData.notes}
                   onChange={(e) => handleInputChange('notes', e.target.value)}
-                  placeholder="Notas adicionales sobre el cliente..."
-                  rows={3}
+                  placeholder="Escribe notas adicionales sobre el cliente aquí..."
+                  rows={10}
+                  className="resize-none"
                 />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
 
         {/* Action Buttons */}
         <div className="flex justify-end space-x-4 mt-6">

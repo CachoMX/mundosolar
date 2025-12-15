@@ -32,13 +32,35 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         rfc: true,
         curp: true,
         regimenFiscal: true,
+        identificationNumber: true,
         growattUsername: true,
         growattPassword: true,
         expectedDailyGeneration: true,
         notes: true,
         isActive: true,
         createdAt: true,
-        updatedAt: true
+        updatedAt: true,
+        cfeReceipts: {
+          select: {
+            id: true,
+            rpu: true,
+            meterNumber: true,
+            rmu: true,
+            accountNumber: true,
+            meterType: true,
+            tariff: true,
+            phases: true,
+            wires: true,
+            installedLoad: true,
+            contractedDemand: true,
+            voltageLevel: true,
+            mediumVoltage: true,
+            cfeBranch: true,
+            cfeFolio: true,
+            receiptFileUrl: true,
+            notes: true
+          }
+        }
       }
     })
 
@@ -96,6 +118,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         rfc: data.rfc || null,
         curp: data.curp || null,
         regimenFiscal: data.regimenFiscal || null,
+        identificationNumber: data.identificationNumber || null,
         growattUsername: data.growattUsername || null,
         growattPassword: data.growattPassword || null,
         expectedDailyGeneration: data.expectedDailyGeneration || null,
@@ -103,6 +126,43 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         isActive: data.isActive
       }
     })
+
+    // Handle CFE receipt data (upsert)
+    const hasCfeData = data.cfeRpu || data.cfeMeterNumber || data.cfeRmu || data.cfeAccountNumber ||
+                       data.cfeMeterType || data.cfeTariff || data.cfePhases || data.cfeWires ||
+                       data.cfeInstalledLoad || data.cfeContractedDemand || data.cfeVoltageLevel ||
+                       data.cfeBranch || data.cfeFolio || data.cfeReceiptFileUrl
+
+    if (hasCfeData) {
+      const cfeData = {
+        rpu: data.cfeRpu || null,
+        meterNumber: data.cfeMeterNumber || null,
+        rmu: data.cfeRmu || null,
+        accountNumber: data.cfeAccountNumber || null,
+        meterType: data.cfeMeterType || null,
+        tariff: data.cfeTariff || null,
+        phases: data.cfePhases || null,
+        wires: data.cfeWires || null,
+        installedLoad: data.cfeInstalledLoad || null,
+        contractedDemand: data.cfeContractedDemand || null,
+        voltageLevel: data.cfeVoltageLevel || null,
+        mediumVoltage: data.cfeMediumVoltage || false,
+        cfeBranch: data.cfeBranch || null,
+        cfeFolio: data.cfeFolio || null,
+        receiptFileUrl: data.cfeReceiptFileUrl || null
+      }
+
+      await prisma.cfeReceipt.upsert({
+        where: {
+          clientId: params.id
+        },
+        update: cfeData,
+        create: {
+          clientId: params.id,
+          ...cfeData
+        }
+      })
+    }
 
     return NextResponse.json({
       success: true,

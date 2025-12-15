@@ -184,6 +184,12 @@ export default function ProfilePage() {
     setPasswordErrorMessage('')
 
     // Validations
+    if (!currentPassword) {
+      setPasswordErrorMessage('La contraseña actual es requerida')
+      setChangingPassword(false)
+      return
+    }
+
     if (!newPassword || newPassword.length < 6) {
       setPasswordErrorMessage('La nueva contraseña debe tener al menos 6 caracteres')
       setChangingPassword(false)
@@ -197,19 +203,28 @@ export default function ProfilePage() {
     }
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword
+        })
       })
 
-      if (error) throw error
+      const result = await response.json()
 
-      setPasswordSuccessMessage('Contraseña actualizada correctamente')
-      setCurrentPassword('')
-      setNewPassword('')
-      setConfirmPassword('')
+      if (result.success) {
+        setPasswordSuccessMessage('Contraseña actualizada correctamente')
+        setCurrentPassword('')
+        setNewPassword('')
+        setConfirmPassword('')
+      } else {
+        setPasswordErrorMessage(result.error || 'Error al cambiar la contraseña')
+      }
     } catch (error: any) {
       console.error('Error changing password:', error)
-      setPasswordErrorMessage(error.message || 'Error al cambiar la contraseña')
+      setPasswordErrorMessage('Error al cambiar la contraseña')
     } finally {
       setChangingPassword(false)
     }
@@ -485,6 +500,30 @@ export default function ProfilePage() {
                   {passwordErrorMessage}
                 </div>
               )}
+
+              <div className="space-y-2">
+                <Label htmlFor="currentPassword">Contraseña Actual</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    id="currentPassword"
+                    type={showCurrentPassword ? 'text' : 'password'}
+                    placeholder="Tu contraseña actual"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="pl-10 pr-10"
+                    disabled={changingPassword}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="newPassword">Nueva Contraseña</Label>

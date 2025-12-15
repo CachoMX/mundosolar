@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -118,9 +117,13 @@ const fetchMaintenanceData = async (): Promise<MaintenanceData> => {
 
 export default function MantenimientosPage() {
   const searchParams = useSearchParams()
-  const queryClient = useQueryClient()
   const [view, setView] = useState<'calendar' | 'table'>('calendar')
   const [dismissedRejections, setDismissedRejections] = useState<string[]>([])
+
+  // Data state
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [loading, setLoading] = useState(true)
 
   // Modal state
   const [showRequestModal, setShowRequestModal] = useState(false)
@@ -149,17 +152,22 @@ export default function MantenimientosPage() {
     preferredPeriod: 'AM' as 'AM' | 'PM'
   })
 
-  const {
-    data: maintenanceData,
-    isLoading: loading,
-    refetch: loadData
-  } = useQuery({
-    queryKey: ['cliente-mantenimientos'],
-    queryFn: fetchMaintenanceData,
-  })
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true)
+      const data = await fetchMaintenanceData()
+      setMetrics(data.metrics)
+      setEvents(data.events)
+    } catch (error) {
+      console.error('Error loading maintenance data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  const metrics = maintenanceData?.metrics || null
-  const events = maintenanceData?.events || []
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   useEffect(() => {
     // Load dismissed rejections from localStorage
@@ -256,7 +264,7 @@ export default function MantenimientosPage() {
         localStorage.setItem('dismissedRejections', JSON.stringify(newDismissed))
         setShowRejectionModal(false)
         setSelectedRejectedEvent(null)
-        queryClient.invalidateQueries({ queryKey: ['cliente-mantenimientos'] })
+        loadData()
       } else {
         alert(result.error || 'Error al eliminar')
       }
@@ -328,8 +336,7 @@ export default function MantenimientosPage() {
         // Reload data after successful request
         setTimeout(() => {
           setShowRequestModal(false)
-          queryClient.invalidateQueries({ queryKey: ['cliente-mantenimientos'] })
-          queryClient.invalidateQueries({ queryKey: ['cliente-dashboard'] })
+          loadData()
         }, 2000)
       } else {
         setRequestMessage({ type: 'error', text: data.error || 'Error al enviar solicitud' })

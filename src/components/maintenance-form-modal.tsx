@@ -28,8 +28,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import { Checkbox } from '@/components/ui/checkbox'
-import { CalendarIcon, Loader2, X } from 'lucide-react'
+import { CalendarIcon, Loader2, Check, ChevronsUpDown } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -91,6 +99,7 @@ export function MaintenanceFormModal({
   const [technicians, setTechnicians] = useState<Technician[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingData, setLoadingData] = useState(true)
+  const [clientOpen, setClientOpen] = useState(false)
 
   const {
     register,
@@ -273,24 +282,55 @@ export function MaintenanceFormModal({
           </div>
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            {/* Client Selection */}
+            {/* Client Selection - Searchable */}
             <div className="space-y-2">
               <Label htmlFor="clientId">Cliente *</Label>
-              <Select
-                value={watch('clientId')}
-                onValueChange={(value) => setValue('clientId', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map((client) => (
-                    <SelectItem key={client.id} value={client.id}>
-                      {client.firstName} {client.lastName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={clientOpen} onOpenChange={setClientOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={clientOpen}
+                    className="w-full justify-between font-normal"
+                  >
+                    {selectedClientId
+                      ? (() => {
+                          const client = clients.find(c => c.id === selectedClientId)
+                          return client ? `${client.firstName} ${client.lastName}` : 'Selecciona un cliente'
+                        })()
+                      : 'Selecciona un cliente'}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar cliente..." />
+                    <CommandList>
+                      <CommandEmpty>No se encontraron clientes.</CommandEmpty>
+                      <CommandGroup>
+                        {clients.map((client) => (
+                          <CommandItem
+                            key={client.id}
+                            value={`${client.firstName} ${client.lastName}`}
+                            onSelect={() => {
+                              setValue('clientId', client.id)
+                              setClientOpen(false)
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedClientId === client.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {client.firstName} {client.lastName}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               {errors.clientId && (
                 <p className="text-sm text-red-500">{errors.clientId.message}</p>
               )}

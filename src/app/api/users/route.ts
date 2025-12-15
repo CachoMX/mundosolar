@@ -75,14 +75,25 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, email, password, role, department, employeeId } = body
+    const { name, email, newPassword, role, department, employeeId } = body
 
     // Validate required fields
-    if (!name || !email || !role || !password) {
+    if (!name || !email || !role || !newPassword) {
       return NextResponse.json(
         {
           success: false,
           error: 'Nombre, email, contraseña y rol son requeridos'
+        },
+        { status: 400 }
+      )
+    }
+
+    // Validate password length
+    if (newPassword.length < 6) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'La contraseña debe tener al menos 6 caracteres'
         },
         { status: 400 }
       )
@@ -106,7 +117,7 @@ export async function POST(request: NextRequest) {
     // Create user in Supabase Auth first
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
-      password,
+      password: newPassword,
       email_confirm: true, // Auto-confirm email
       user_metadata: {
         name,

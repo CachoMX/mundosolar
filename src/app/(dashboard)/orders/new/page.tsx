@@ -46,6 +46,10 @@ interface Client {
   email: string
   phone: string | null
   address: string | null
+  neighborhood: string | null
+  city: string | null
+  state: string | null
+  postalCode: string | null
 }
 
 interface Product {
@@ -288,9 +292,17 @@ export default function NewOrderPage() {
                             onSelect={() => {
                               setSelectedClientId(client.id)
                               setClientOpen(false)
-                              // Auto-fill shipping address if client has one
-                              if (client.address && !shippingAddress) {
-                                setShippingAddress(client.address)
+                              // Auto-fill shipping address if client has one and shipping is empty
+                              if ((client.address || client.city || client.state) && !shippingAddress) {
+                                const addressParts = [
+                                  client.address,
+                                  client.neighborhood && `Col. ${client.neighborhood}`,
+                                  client.city,
+                                  client.state,
+                                  client.postalCode && `C.P. ${client.postalCode}`,
+                                  'México'
+                                ].filter(Boolean)
+                                setShippingAddress(addressParts.join(', '))
                               }
                             }}
                           >
@@ -313,10 +325,45 @@ export default function NewOrderPage() {
               </Popover>
 
               {selectedClient && (
-                <div className="bg-muted p-3 rounded-lg text-sm">
+                <div className="bg-muted p-3 rounded-lg text-sm space-y-2">
                   <p><strong>Email:</strong> {selectedClient.email}</p>
                   {selectedClient.phone && <p><strong>Teléfono:</strong> {selectedClient.phone}</p>}
-                  {selectedClient.address && <p><strong>Dirección:</strong> {selectedClient.address}</p>}
+
+                  {/* Client Address Section */}
+                  {(selectedClient.address || selectedClient.city || selectedClient.state) && (
+                    <div className="pt-2 border-t border-border mt-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <strong>Dirección del Cliente:</strong>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const addressParts = [
+                              selectedClient.address,
+                              selectedClient.neighborhood && `Col. ${selectedClient.neighborhood}`,
+                              selectedClient.city,
+                              selectedClient.state,
+                              selectedClient.postalCode && `C.P. ${selectedClient.postalCode}`,
+                              'México'
+                            ].filter(Boolean)
+                            setShippingAddress(addressParts.join(', '))
+                          }}
+                        >
+                          Usar esta dirección
+                        </Button>
+                      </div>
+                      <div className="text-muted-foreground space-y-1">
+                        {selectedClient.address && <p>{selectedClient.address}</p>}
+                        {selectedClient.neighborhood && <p>Col. {selectedClient.neighborhood}</p>}
+                        <p>
+                          {[selectedClient.city, selectedClient.state].filter(Boolean).join(', ')}
+                          {selectedClient.postalCode && ` - C.P. ${selectedClient.postalCode}`}
+                        </p>
+                        <p>México</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>

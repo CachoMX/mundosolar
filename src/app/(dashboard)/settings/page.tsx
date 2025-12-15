@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Settings, User, Building, Bell, Shield, Database } from 'lucide-react'
+import { Settings, User, Building, Bell, Shield, Database, Contact } from 'lucide-react'
 import Link from 'next/link'
 
 export default function SettingsPage() {
@@ -122,6 +122,12 @@ export default function SettingsPage() {
                 <Button variant="outline" className="w-full justify-start">
                   <Shield className="mr-2 h-4 w-4" />
                   Permisos
+                </Button>
+              </Link>
+              <Link href="/settings/contact">
+                <Button variant="outline" className="w-full justify-start">
+                  <Contact className="mr-2 h-4 w-4" />
+                  Contacto Anexo
                 </Button>
               </Link>
               <Button variant="outline" className="w-full justify-start">
