@@ -9,7 +9,10 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, Save, User, Building, MapPin, FileText, Loader2, Sun, Key, Zap, Plus, Trash2, Wrench, StickyNote, Upload, File, X, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Save, User, Building, MapPin, FileText, Loader2, Sun, Key, Zap, Plus, Trash2, Wrench, StickyNote, Upload, File, X, ExternalLink, Calendar, Clock, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
 import { createClient } from '@/lib/supabase/client'
 import { Checkbox } from '@/components/ui/checkbox'
 import Link from 'next/link'
@@ -43,6 +46,22 @@ interface ContactSettings {
   contact_postal_code: string
   contact_phone: string
   contact_email: string
+}
+
+// Maintenance interface
+interface ClientMaintenance {
+  id: string
+  title: string
+  type: string
+  status: string
+  priority: string
+  scheduledDate: string | null
+  completedDate: string | null
+  technicians: Array<{
+    technician: {
+      name: string
+    }
+  }>
 }
 
 interface ClientFormData {
@@ -156,6 +175,8 @@ export default function EditClientPage() {
   const [uploading, setUploading] = useState(false)
   const [panels, setPanels] = useState<SolarPanel[]>([])
   const [inverters, setInverters] = useState<Inverter[]>([])
+  const [maintenances, setMaintenances] = useState<ClientMaintenance[]>([])
+  const [loadingMaintenances, setLoadingMaintenances] = useState(false)
   const [contactSettings, setContactSettings] = useState<ContactSettings>({
     contact_name: '',
     contact_position: '',
@@ -210,6 +231,7 @@ export default function EditClientPage() {
   useEffect(() => {
     fetchClient()
     fetchContactSettings()
+    fetchMaintenances()
   }, [clientId])
 
   const fetchContactSettings = async () => {
@@ -221,6 +243,21 @@ export default function EditClientPage() {
       }
     } catch (error) {
       console.error('Error fetching contact settings:', error)
+    }
+  }
+
+  const fetchMaintenances = async () => {
+    try {
+      setLoadingMaintenances(true)
+      const response = await fetch(`/api/clients/${clientId}/maintenances`)
+      const result = await response.json()
+      if (result.success) {
+        setMaintenances(result.data)
+      }
+    } catch (error) {
+      console.error('Error fetching maintenances:', error)
+    } finally {
+      setLoadingMaintenances(false)
     }
   }
 
@@ -1409,26 +1446,96 @@ export default function EditClientPage() {
           {/* TAB: Mantenimientos */}
           <TabsContent value="maintenance">
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Wrench className="mr-2 h-5 w-5" />
-                  Mantenimientos
-                </CardTitle>
-                <CardDescription>
-                  Historial de mantenimientos del cliente
-                </CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center">
+                    <Wrench className="mr-2 h-5 w-5" />
+                    Mantenimientos
+                  </CardTitle>
+                  <CardDescription>
+                    Historial de mantenimientos del cliente
+                  </CardDescription>
+                </div>
+                <Link href={`/maintenance?clientId=${clientId}`}>
+                  <Button variant="outline" size="sm">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Nuevo Mantenimiento
+                  </Button>
+                </Link>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  <Wrench className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                  <p>Los mantenimientos de este cliente se mostrarán aquí.</p>
-                  <p className="text-sm mt-2">
-                    Puede ver y gestionar los mantenimientos desde la sección de{' '}
-                    <Link href="/maintenance" className="text-primary hover:underline">
-                      Mantenimientos
-                    </Link>
-                  </p>
-                </div>
+                {loadingMaintenances ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : maintenances.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Wrench className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                    <p>No hay mantenimientos registrados para este cliente.</p>
+                    <p className="text-sm mt-2">
+                      Puede crear uno desde la sección de{' '}
+                      <Link href="/maintenance" className="text-primary hover:underline">
+                        Mantenimientos
+                      </Link>
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {maintenances.map((maintenance) => (
+                      <Link
+                        key={maintenance.id}
+                        href={`/maintenance/${maintenance.id}`}
+                        className="block"
+                      >
+                        <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{maintenance.title}</span>
+                              <Badge variant={
+                                maintenance.status === 'COMPLETED' ? 'default' :
+                                maintenance.status === 'IN_PROGRESS' ? 'secondary' :
+                                maintenance.status === 'SCHEDULED' ? 'outline' :
+                                maintenance.status === 'CANCELLED' ? 'destructive' :
+                                'secondary'
+                              }>
+                                {maintenance.status === 'PENDING_APPROVAL' && 'Pendiente'}
+                                {maintenance.status === 'SCHEDULED' && 'Programado'}
+                                {maintenance.status === 'IN_PROGRESS' && 'En Progreso'}
+                                {maintenance.status === 'COMPLETED' && 'Completado'}
+                                {maintenance.status === 'CANCELLED' && 'Cancelado'}
+                              </Badge>
+                              <Badge variant="outline">
+                                {maintenance.type === 'PREVENTIVE' && 'Preventivo'}
+                                {maintenance.type === 'CORRECTIVE' && 'Correctivo'}
+                                {maintenance.type === 'WARRANTY' && 'Garantía'}
+                                {maintenance.type === 'CLEANING' && 'Limpieza'}
+                              </Badge>
+                            </div>
+                            {maintenance.technicians.length > 0 && (
+                              <p className="text-sm text-muted-foreground mt-1">
+                                Técnico: {maintenance.technicians.map(t => t.technician.name).join(', ')}
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-right text-sm">
+                            {maintenance.scheduledDate && (
+                              <div className="flex items-center gap-1 text-muted-foreground">
+                                <Calendar className="h-4 w-4" />
+                                {format(new Date(maintenance.scheduledDate), "dd/MM/yyyy", { locale: es })}
+                              </div>
+                            )}
+                            {maintenance.status === 'COMPLETED' && maintenance.completedDate && (
+                              <div className="flex items-center gap-1 text-green-600 mt-1">
+                                <CheckCircle2 className="h-4 w-4" />
+                                {format(new Date(maintenance.completedDate), "dd/MM/yyyy", { locale: es })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

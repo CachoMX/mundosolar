@@ -31,14 +31,21 @@ interface Metrics {
 }
 
 export function ClientHistoryModal({ open, onOpenChange, clientId, clientName }: ClientHistoryModalProps) {
-  const [period, setPeriod] = useState<'7' | '14' | '30' | '90'>('30')
+  const [period, setPeriod] = useState<'7' | '14' | '30' | '90'>('7')
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<HistoryData[]>([])
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [expectedDaily, setExpectedDaily] = useState(0)
 
+  // Reset to 7 days when modal opens
   useEffect(() => {
     if (open) {
+      setPeriod('7')
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (open && clientId) {
       fetchHistory()
     }
   }, [open, period, clientId])

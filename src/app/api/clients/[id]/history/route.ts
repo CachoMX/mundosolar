@@ -11,10 +11,10 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const days = parseInt(searchParams.get('days') || '30')
 
-    // Calculate start date
+    // Calculate start date (days - 1 to get exactly N days including today)
     const endDate = new Date()
     const startDate = new Date()
-    startDate.setDate(startDate.getDate() - days)
+    startDate.setDate(startDate.getDate() - (days - 1))
 
     // Fetch historical data
     const history = await prisma.growattDailyHistory.findMany({

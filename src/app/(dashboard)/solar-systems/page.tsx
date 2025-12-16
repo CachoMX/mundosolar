@@ -339,28 +339,18 @@ export default function SolarSystemsPage() {
           )}
         </div>
         <div className="flex space-x-2">
-          {activeTab === 'todos-sistemas' && (
-            <Button
-              variant="outline"
-              onClick={triggerManualSync}
-              disabled={syncingManually}
-              title="Sincronizar datos desde Growatt"
-            >
-              {syncingManually ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
-              )}
-              {syncingManually ? 'Sincronizando...' : 'Sincronizar'}
-            </Button>
-          )}
-          <Button variant="outline" onClick={handleRefresh} disabled={(activeTab === 'mi-sistema' ? refreshing : clientsLoading)}>
-            {(activeTab === 'mi-sistema' ? refreshing : clientsLoading) ? (
+          <Button
+            variant="outline"
+            onClick={triggerManualSync}
+            disabled={syncingManually}
+            title="Sincronizar datos desde Growatt"
+          >
+            {syncingManually ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
-            Actualizar
+            {syncingManually ? 'Sincronizando...' : 'Sincronizar'}
           </Button>
           <Button>
             <Plus className="mr-2 h-4 w-4" />
