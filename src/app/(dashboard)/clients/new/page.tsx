@@ -127,6 +127,23 @@ const CFE_TARIFFS = [
   'DIT - Transmisión'
 ]
 
+const INVERTER_BRANDS = [
+  'N/A',
+  'APS',
+  'Chint Power Systems',
+  'Connera',
+  'Enphase',
+  'Fronius',
+  'Goodwe',
+  'Growatt',
+  'Hoymiles',
+  'Huawei',
+  'NEP',
+  'Solar Factory',
+  'Solis',
+  'Trannergy'
+]
+
 export default function NewClientPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -968,11 +985,21 @@ export default function NewClientPage() {
                               />
                             </td>
                             <td className="p-2">
-                              <Input
+                              <Select
                                 value={inverter.marca}
-                                onChange={(e) => updateInverterRow(inverter.id, 'marca', e.target.value)}
-                                placeholder="Marca"
-                              />
+                                onValueChange={(value) => updateInverterRow(inverter.id, 'marca', value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Seleccionar" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {INVERTER_BRANDS.map((brand) => (
+                                    <SelectItem key={brand} value={brand}>
+                                      {brand}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </td>
                             <td className="p-2">
                               <Input

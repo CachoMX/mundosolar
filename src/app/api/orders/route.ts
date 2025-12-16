@@ -136,6 +136,68 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// Helper function to deduct inventory for order items
+async function deductInventoryForOrder(orderItems: any[], orderNumber: string) {
+  const inventoryResults = []
+
+  for (const item of orderItems) {
+    const productId = item.productId
+    const quantity = item.quantity
+
+    // Find inventory items for this product (ordered by quantity to deduct from largest first)
+    const inventoryItems = await prisma.inventoryItem.findMany({
+      where: { productId },
+      orderBy: { quantity: 'desc' }
+    })
+
+    if (inventoryItems.length === 0) {
+      inventoryResults.push({
+        productId,
+        success: false,
+        message: 'No hay inventario para este producto'
+      })
+      continue
+    }
+
+    let remainingToDeduct = quantity
+
+    for (const inventoryItem of inventoryItems) {
+      if (remainingToDeduct <= 0) break
+      if (inventoryItem.quantity <= 0) continue
+
+      const deductAmount = Math.min(remainingToDeduct, inventoryItem.quantity)
+
+      // Update inventory item quantity
+      await prisma.inventoryItem.update({
+        where: { id: inventoryItem.id },
+        data: { quantity: inventoryItem.quantity - deductAmount }
+      })
+
+      // Create movement record
+      await prisma.inventoryMovement.create({
+        data: {
+          type: 'SALE',
+          quantity: deductAmount,
+          fromItemId: inventoryItem.id,
+          reason: `Orden ${orderNumber}`,
+          notes: `Salida automática por creación de orden`
+        }
+      })
+
+      remainingToDeduct -= deductAmount
+    }
+
+    inventoryResults.push({
+      productId,
+      success: true,
+      deducted: quantity - remainingToDeduct,
+      pending: remainingToDeduct
+    })
+  }
+
+  return inventoryResults
+}
+
 // POST /api/orders - Create new order
 export async function POST(request: NextRequest) {
   try {
@@ -195,19 +257,22 @@ export async function POST(request: NextRequest) {
         unitPrice,
         discount,
         totalPrice,
-        notes: item.notes || null
+        notes: item.notes || null,
+        serialNumbers: item.serialNumbers || []
       }
     })
 
     const taxAmount = subtotal * taxRate
     const total = subtotal + taxAmount
 
+    const orderStatus = data.status || 'DRAFT'
+
     // Create order with items
     const order = await withRetry(() => prisma.order.create({
       data: {
         orderNumber,
         clientId: data.clientId,
-        status: data.status || 'DRAFT',
+        status: orderStatus,
         orderType: data.orderType || 'SALE',
         orderDate: new Date(),
         requiredDate: data.requiredDate ? new Date(data.requiredDate) : null,
@@ -238,6 +303,17 @@ export async function POST(request: NextRequest) {
       }
     }))
 
+    // If order is CONFIRMED, automatically deduct inventory
+    let inventoryDeduction = null
+    if (orderStatus === 'CONFIRMED') {
+      try {
+        inventoryDeduction = await deductInventoryForOrder(order.orderItems, orderNumber)
+      } catch (inventoryError) {
+        console.error('Error deducting inventory:', inventoryError)
+        // Don't fail the order creation, just log the error
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -246,7 +322,10 @@ export async function POST(request: NextRequest) {
         subtotal: Number(order.subtotal),
         taxAmount: Number(order.taxAmount)
       },
-      message: 'Orden creada exitosamente'
+      inventoryDeduction,
+      message: orderStatus === 'CONFIRMED'
+        ? 'Orden creada y inventario actualizado exitosamente'
+        : 'Orden creada exitosamente'
     })
   } catch (error: any) {
     console.error('Error creating order:', error)

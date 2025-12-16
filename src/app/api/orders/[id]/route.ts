@@ -141,7 +141,8 @@ export async function PUT(
           unitPrice,
           discount,
           totalPrice,
-          notes: item.notes || null
+          notes: item.notes || null,
+          serialNumbers: item.serialNumbers || []
         }
       })
 

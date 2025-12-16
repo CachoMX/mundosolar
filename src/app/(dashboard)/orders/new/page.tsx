@@ -35,9 +35,27 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { ArrowLeft, Save, Plus, Trash2, Loader2, Check, ChevronsUpDown, Search } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, Loader2, Check, ChevronsUpDown, Search, ScanBarcode, Zap } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+
+interface CfeReceipt {
+  id: string
+  rpu: string | null
+  meterNumber: string | null
+  rmu: string | null
+  accountNumber: string | null
+  meterType: string | null
+  tariff: string | null
+  phases: number | null
+  wires: number | null
+  installedLoad: number | null
+  contractedDemand: number | null
+  voltageLevel: number | null
+  mediumVoltage: boolean
+  cfeBranch: string | null
+  cfeFolio: string | null
+}
 
 interface Client {
   id: string
@@ -50,6 +68,7 @@ interface Client {
   city: string | null
   state: string | null
   postalCode: string | null
+  cfeReceipts: CfeReceipt[]
 }
 
 interface Product {
@@ -59,6 +78,7 @@ interface Product {
   model: string | null
   capacity: string | null
   unitPrice: number | null
+  barcode: string | null
   category: {
     id: string
     name: string
@@ -73,6 +93,7 @@ interface OrderItem {
   discount: number
   totalPrice: number
   notes: string
+  serialNumbers: string[] // Números de serie escaneados
 }
 
 export default function NewOrderPage() {
@@ -97,6 +118,9 @@ export default function NewOrderPage() {
   const [clientOpen, setClientOpen] = useState(false)
   const [productOpen, setProductOpen] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState<string>('')
+  const [barcodeInput, setBarcodeInput] = useState<string>('')
+  const [barcodeSearching, setBarcodeSearching] = useState(false)
+  const [barcodeError, setBarcodeError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchData()
@@ -126,30 +150,84 @@ export default function NewOrderPage() {
     }
   }
 
+  // Search product by barcode and add to order
+  const searchByBarcode = async (barcode: string) => {
+    if (!barcode.trim()) return
+
+    setBarcodeSearching(true)
+    setBarcodeError(null)
+
+    try {
+      const response = await fetch(`/api/products?barcode=${encodeURIComponent(barcode)}`)
+      const result = await response.json()
+
+      if (result.success && result.data.length > 0) {
+        const foundProducts = result.data
+        // If single product found, add it directly with the scanned barcode as serial
+        if (foundProducts.length === 1) {
+          addProductToOrder(foundProducts[0], barcode)
+        } else {
+          // Multiple products with same barcode - add first one with serial
+          addProductToOrder(foundProducts[0], barcode)
+        }
+        setBarcodeInput('')
+      } else {
+        setBarcodeError('Producto no encontrado con ese código de barras')
+      }
+    } catch (error) {
+      setBarcodeError('Error al buscar producto')
+    } finally {
+      setBarcodeSearching(false)
+    }
+  }
+
+  const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      searchByBarcode(barcodeInput)
+    }
+  }
+
+  const addProductToOrder = (product: Product, scannedBarcode?: string) => {
+    // Check if product already exists in items
+    const existingIndex = items.findIndex(item => item.productId === product.id)
+
+    if (existingIndex !== -1) {
+      // Increment quantity and add serial number if provided
+      const newItems = [...items]
+      newItems[existingIndex].quantity += 1
+      newItems[existingIndex].totalPrice =
+        (newItems[existingIndex].quantity * newItems[existingIndex].unitPrice) - newItems[existingIndex].discount
+
+      // Add serial number if it was scanned and not already in the list
+      if (scannedBarcode && !newItems[existingIndex].serialNumbers.includes(scannedBarcode)) {
+        newItems[existingIndex].serialNumbers = [...newItems[existingIndex].serialNumbers, scannedBarcode]
+      }
+      setItems(newItems)
+    } else {
+      // Add new item
+      const unitPrice = product.unitPrice || 0
+      const newItem: OrderItem = {
+        productId: product.id,
+        product,
+        quantity: 1,
+        unitPrice,
+        discount: 0,
+        totalPrice: unitPrice,
+        notes: '',
+        serialNumbers: scannedBarcode ? [scannedBarcode] : []
+      }
+      setItems([...items, newItem])
+    }
+  }
+
   const addItem = () => {
     if (!selectedProductId) return
 
     const product = products.find(p => p.id === selectedProductId)
     if (!product) return
 
-    // Check if product already exists in items
-    if (items.some(item => item.productId === selectedProductId)) {
-      alert('Este producto ya está en la orden')
-      return
-    }
-
-    const unitPrice = product.unitPrice || 0
-    const newItem: OrderItem = {
-      productId: product.id,
-      product,
-      quantity: 1,
-      unitPrice,
-      discount: 0,
-      totalPrice: unitPrice,
-      notes: ''
-    }
-
-    setItems([...items, newItem])
+    addProductToOrder(product)
     setSelectedProductId('')
     setProductOpen(false)
   }
@@ -208,7 +286,8 @@ export default function NewOrderPage() {
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             discount: item.discount,
-            notes: item.notes || null
+            notes: item.notes || null,
+            serialNumbers: item.serialNumbers
           }))
         })
       })
@@ -364,6 +443,54 @@ export default function NewOrderPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* CFE Data Section */}
+                  {selectedClient.cfeReceipts && selectedClient.cfeReceipts.length > 0 && (
+                    <div className="pt-2 border-t border-border mt-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Zap className="h-4 w-4 text-yellow-600" />
+                        <strong>Datos CFE:</strong>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
+                        {selectedClient.cfeReceipts[0].rpu && (
+                          <p><span className="font-medium text-foreground">RPU:</span> {selectedClient.cfeReceipts[0].rpu}</p>
+                        )}
+                        {selectedClient.cfeReceipts[0].accountNumber && (
+                          <p><span className="font-medium text-foreground">No. Cuenta:</span> {selectedClient.cfeReceipts[0].accountNumber}</p>
+                        )}
+                        {selectedClient.cfeReceipts[0].meterNumber && (
+                          <p><span className="font-medium text-foreground">No. Medidor:</span> {selectedClient.cfeReceipts[0].meterNumber}</p>
+                        )}
+                        {selectedClient.cfeReceipts[0].tariff && (
+                          <p><span className="font-medium text-foreground">Tarifa:</span> {selectedClient.cfeReceipts[0].tariff}</p>
+                        )}
+                        {selectedClient.cfeReceipts[0].meterType && (
+                          <p><span className="font-medium text-foreground">Tipo Medidor:</span> {selectedClient.cfeReceipts[0].meterType}</p>
+                        )}
+                        {selectedClient.cfeReceipts[0].phases && (
+                          <p><span className="font-medium text-foreground">Fases:</span> {selectedClient.cfeReceipts[0].phases}</p>
+                        )}
+                        {selectedClient.cfeReceipts[0].wires && (
+                          <p><span className="font-medium text-foreground">Hilos:</span> {selectedClient.cfeReceipts[0].wires}</p>
+                        )}
+                        {selectedClient.cfeReceipts[0].installedLoad && (
+                          <p><span className="font-medium text-foreground">Carga Instalada:</span> {selectedClient.cfeReceipts[0].installedLoad} kW</p>
+                        )}
+                        {selectedClient.cfeReceipts[0].contractedDemand && (
+                          <p><span className="font-medium text-foreground">Demanda Contratada:</span> {selectedClient.cfeReceipts[0].contractedDemand} kW</p>
+                        )}
+                        {selectedClient.cfeReceipts[0].voltageLevel && (
+                          <p><span className="font-medium text-foreground">Tensión:</span> {selectedClient.cfeReceipts[0].voltageLevel} V</p>
+                        )}
+                        {selectedClient.cfeReceipts[0].cfeBranch && (
+                          <p><span className="font-medium text-foreground">Sucursal:</span> {selectedClient.cfeReceipts[0].cfeBranch}</p>
+                        )}
+                        {selectedClient.cfeReceipts[0].mediumVoltage && (
+                          <p><span className="font-medium text-foreground">Media Tensión:</span> Sí</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -434,6 +561,50 @@ export default function NewOrderPage() {
             <CardDescription>Agrega los productos o servicios para esta orden</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Barcode Scanner Input */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <ScanBarcode className="h-4 w-4" />
+                Escanear Código de Barras
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  value={barcodeInput}
+                  onChange={(e) => {
+                    setBarcodeInput(e.target.value)
+                    setBarcodeError(null)
+                  }}
+                  onKeyDown={handleBarcodeKeyDown}
+                  placeholder="Escanea o ingresa el código de barras"
+                  className="font-mono flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => searchByBarcode(barcodeInput)}
+                  disabled={barcodeSearching || !barcodeInput}
+                >
+                  {barcodeSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                </Button>
+              </div>
+              {barcodeError && (
+                <p className="text-sm text-red-500">{barcodeError}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Presiona Enter después de escanear para agregar el producto automáticamente
+              </p>
+            </div>
+
+            {/* Divider */}
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">o buscar manualmente</span>
+              </div>
+            </div>
+
             {/* Add Product */}
             <div className="flex gap-4">
               <Popover open={productOpen} onOpenChange={setProductOpen}>
@@ -517,6 +688,21 @@ export default function NewOrderPage() {
                             <p className="text-sm text-muted-foreground">
                               {item.product?.brand} {item.product?.model}
                             </p>
+                            {item.serialNumbers.length > 0 && (
+                              <div className="mt-1">
+                                <p className="text-xs text-muted-foreground font-medium">Seriales:</p>
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {item.serialNumbers.map((serial, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-mono"
+                                    >
+                                      {serial}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>

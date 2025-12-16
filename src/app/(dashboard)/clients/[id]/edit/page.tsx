@@ -129,6 +129,23 @@ const REGIMEN_FISCAL = [
   '626 - Régimen Simplificado de Confianza'
 ]
 
+const INVERTER_BRANDS = [
+  'N/A',
+  'APS',
+  'Chint Power Systems',
+  'Connera',
+  'Enphase',
+  'Fronius',
+  'Goodwe',
+  'Growatt',
+  'Hoymiles',
+  'Huawei',
+  'NEP',
+  'Solar Factory',
+  'Solis',
+  'Trannergy'
+]
+
 export default function EditClientPage() {
   const router = useRouter()
   const params = useParams()
@@ -260,6 +277,48 @@ export default function EditClientPage() {
           cfeReceiptFileUrl: cfeReceipt?.receiptFileUrl || '',
           monthlyGeneration: client.monthlyGeneration || 0
         })
+
+        // Load panels and inverters from solar systems
+        if (client.solarSystems && client.solarSystems.length > 0) {
+          const loadedPanels: SolarPanel[] = []
+          const loadedInverters: Inverter[] = []
+
+          client.solarSystems.forEach((system: any) => {
+            if (system.components) {
+              system.components.forEach((component: any) => {
+                const categoryName = component.product?.category?.name?.toLowerCase() || ''
+                const capacity = component.product?.capacity || ''
+                // Try to extract numeric value from capacity string (e.g., "400W" -> 400)
+                const capacityNum = parseInt(capacity.replace(/\D/g, '')) || 0
+
+                if (categoryName.includes('panel')) {
+                  loadedPanels.push({
+                    id: component.id,
+                    brand: component.product?.brand || '',
+                    model: component.product?.model || component.product?.name || '',
+                    quantity: component.quantity || 1,
+                    wattsPerPanel: capacityNum
+                  })
+                } else if (categoryName.includes('inversor') || categoryName.includes('inverter')) {
+                  loadedInverters.push({
+                    id: component.id,
+                    brand: component.product?.brand || '',
+                    model: component.product?.model || component.product?.name || '',
+                    quantity: component.quantity || 1,
+                    capacityWatts: capacityNum
+                  })
+                }
+              })
+            }
+          })
+
+          if (loadedPanels.length > 0) {
+            setPanels(loadedPanels)
+          }
+          if (loadedInverters.length > 0) {
+            setInverters(loadedInverters)
+          }
+        }
       } else {
         throw new Error(result.error || 'Cliente no encontrado')
       }
@@ -1258,12 +1317,21 @@ export default function EditClientPage() {
                                 />
                               </td>
                               <td className="px-4 py-2">
-                                <Input
+                                <Select
                                   value={inverter.brand}
-                                  onChange={(e) => updateInverter(inverter.id, 'brand', e.target.value)}
-                                  placeholder="Growatt"
-                                  className="h-8"
-                                />
+                                  onValueChange={(value) => updateInverter(inverter.id, 'brand', value)}
+                                >
+                                  <SelectTrigger className="h-8">
+                                    <SelectValue placeholder="Seleccionar" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {INVERTER_BRANDS.map((brand) => (
+                                      <SelectItem key={brand} value={brand}>
+                                        {brand}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               </td>
                               <td className="px-4 py-2">
                                 <Input

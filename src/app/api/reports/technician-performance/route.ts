@@ -26,9 +26,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get current user to check permissions
+    // Get current user to check permissions (lookup by email since Supabase Auth ID differs from Prisma User ID)
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { email: session.user.email! },
       select: { role: true }
     })
 

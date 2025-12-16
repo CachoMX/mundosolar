@@ -29,9 +29,9 @@ export async function POST(request: NextRequest) {
     const subscription = await request.json()
 
     // Store subscription in database
-    // First, check if user already has a push subscription record
+    // First, check if user already has a push subscription record (lookup by email since Supabase Auth ID differs from Prisma User ID)
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { email: session.user.email! },
     })
 
     if (!user) {

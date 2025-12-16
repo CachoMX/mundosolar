@@ -46,6 +46,8 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
   const [unreadCount, setUnreadCount] = useState(0)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
 
   // Prevent hydration mismatch by only rendering dropdowns after mount
   useEffect(() => {
@@ -62,10 +64,16 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
           if (result.success) {
             setUserName(`${result.client.firstName} ${result.client.lastName}`)
             setUserEmail(result.client.email)
+            setIsAuthenticated(true)
             loadNotifications()
+          } else {
+            setIsAuthenticated(false)
           }
         } catch (err) {
           console.error('Error getting client session:', err)
+          setIsAuthenticated(false)
+        } finally {
+          setAuthChecked(true)
         }
       }
       getClientSession()
@@ -76,11 +84,21 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
     } else {
       // Get admin/staff info from Supabase
       const getUser = async () => {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setUserEmail(user.email || null)
-          setUserName(user.user_metadata?.name || user.email || null)
-          loadNotifications()
+        try {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            setUserEmail(user.email || null)
+            setUserName(user.user_metadata?.name || user.email || null)
+            setIsAuthenticated(true)
+            loadNotifications()
+          } else {
+            setIsAuthenticated(false)
+          }
+        } catch (err) {
+          console.error('Error getting user:', err)
+          setIsAuthenticated(false)
+        } finally {
+          setAuthChecked(true)
         }
       }
       getUser()
@@ -325,11 +343,17 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
           )}
 
           {/* User Menu */}
-          {!mounted ? (
+          {!mounted || !authChecked ? (
+            // Loading state - show empty avatar while checking auth
             <Button variant="ghost" className="relative h-10 w-10 rounded-full">
               <Avatar className="h-10 w-10">
-                <AvatarFallback>U</AvatarFallback>
+                <AvatarFallback className="bg-gray-200 animate-pulse"></AvatarFallback>
               </Avatar>
+            </Button>
+          ) : !isAuthenticated ? (
+            // Not authenticated - show login button
+            <Button variant="outline" size="sm" onClick={() => router.push('/login')}>
+              Iniciar Sesión
             </Button>
           ) : (
           <DropdownMenu>
@@ -342,7 +366,7 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
                       ?.split(' ')
                       .map((n) => n[0])
                       .join('')
-                      .toUpperCase() || 'U'}
+                      .toUpperCase() || <User className="h-4 w-4" />}
                   </AvatarFallback>
                 </Avatar>
               </Button>
@@ -351,7 +375,7 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium leading-none">
-                    {userName || 'Usuario'}
+                    {userName || userEmail}
                   </p>
                   <p className="text-xs leading-none text-muted-foreground">
                     {userEmail}

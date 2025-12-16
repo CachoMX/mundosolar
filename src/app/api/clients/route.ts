@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
 
     const clients = await withRetry(() => prisma.client.findMany({
       include: {
-        solarSystems: true
+        solarSystems: true,
+        cfeReceipts: true
       },
       orderBy: {
         createdAt: 'desc'

@@ -60,6 +60,34 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
             receiptFileUrl: true,
             notes: true
           }
+        },
+        solarSystems: {
+          select: {
+            id: true,
+            systemName: true,
+            capacity: true,
+            components: {
+              select: {
+                id: true,
+                quantity: true,
+                serialNumber: true,
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                    brand: true,
+                    model: true,
+                    capacity: true,
+                    category: {
+                      select: {
+                        name: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     })

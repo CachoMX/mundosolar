@@ -71,9 +71,9 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Check if user is admin
+    // Check if user is admin (lookup by email since Supabase Auth ID differs from Prisma User ID)
     const dbUser = await prisma.user.findUnique({
-      where: { id: user.id },
+      where: { email: user.email! },
       select: { role: true }
     })
 

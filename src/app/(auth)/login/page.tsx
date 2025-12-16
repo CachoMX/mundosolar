@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, AlertCircle } from 'lucide-react'
-import Image from 'next/image'
+// Using regular img tag for SVG to avoid optimization issues in production
 import { supabase } from '@/lib/supabase'
 
 // Helper to detect if input is email or phone
@@ -94,12 +94,11 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
-            <Image
+            <img
               src="/assets/logos/logo.svg"
               alt="MundoSolar Logo"
               width={200}
               height={75}
-              priority
             />
           </div>
           <div className="text-center">

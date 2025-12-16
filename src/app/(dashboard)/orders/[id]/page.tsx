@@ -45,6 +45,7 @@ interface OrderItem {
   discount: number
   totalPrice: number
   notes: string | null
+  serialNumbers: string[]
   product: {
     id: string
     name: string
@@ -350,6 +351,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         </p>
                         {item.notes && (
                           <p className="text-xs text-muted-foreground mt-1">{item.notes}</p>
+                        )}
+                        {item.serialNumbers && item.serialNumbers.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-xs text-muted-foreground font-medium">Números de Serie:</p>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {item.serialNumbers.map((serial, idx) => (
+                                <span
+                                  key={idx}
+                                  className="text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-mono"
+                                >
+                                  {serial}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
                     </TableCell>
