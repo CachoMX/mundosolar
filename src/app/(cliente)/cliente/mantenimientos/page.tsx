@@ -36,7 +36,10 @@ import {
   Wrench,
   Loader2,
   Plus,
-  Trash2
+  Trash2,
+  MapPin,
+  FileText,
+  Cpu
 } from 'lucide-react'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 
@@ -955,6 +958,61 @@ export default function MantenimientosPage() {
                     <p className="text-sm text-muted-foreground">
                       {selectedAppointment.resource.solarSystem.systemName}
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Client Address */}
+              {selectedAppointment?.resource?.clientAddress && (
+                <div className="flex items-start gap-3">
+                  <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium">Ubicación del servicio</p>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedAppointment.resource.clientAddress}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Description */}
+              {selectedAppointment?.resource?.description && (
+                <div className="flex items-start gap-3">
+                  <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium">Descripción</p>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                      {selectedAppointment.resource.description}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Serial Numbers of Components */}
+              {selectedAppointment?.resource?.components && selectedAppointment.resource.components.length > 0 && (
+                <div className="flex items-start gap-3">
+                  <Cpu className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">Equipos del sistema</p>
+                    <div className="mt-2 space-y-2">
+                      {selectedAppointment.resource.components
+                        .filter((c: any) => c.serialNumber)
+                        .map((component: any, idx: number) => (
+                          <div key={idx} className="bg-gray-50 rounded-md p-2 text-sm">
+                            <p className="font-medium text-gray-700">
+                              {component.productName}
+                              {component.productBrand && ` - ${component.productBrand}`}
+                              {component.productModel && ` ${component.productModel}`}
+                            </p>
+                            <p className="text-xs text-blue-600 font-mono mt-1">
+                              S/N: {component.serialNumber}
+                            </p>
+                          </div>
+                        ))}
+                      {selectedAppointment.resource.components.filter((c: any) => c.serialNumber).length === 0 && (
+                        <p className="text-sm text-muted-foreground">Sin números de serie registrados</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

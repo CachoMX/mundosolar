@@ -38,6 +38,7 @@ import {
   Trash2,
   Loader2,
   AlertCircle,
+  MapPin,
 } from 'lucide-react'
 import { MaintenanceFormModal } from '@/components/maintenance-form-modal'
 
@@ -59,6 +60,11 @@ interface MaintenanceDetail {
     lastName: string
     email: string
     phone: string
+    address: string | null
+    neighborhood: string | null
+    city: string | null
+    state: string | null
+    postalCode: string | null
   }
   solarSystem: {
     id: string
@@ -522,15 +528,38 @@ export default function MaintenanceDetailPage() {
           <CardHeader>
             <CardTitle className="text-sm font-medium">Cliente</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex items-center gap-2 text-sm">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <span>
-                {maintenance.client.firstName} {maintenance.client.lastName}
-              </span>
+          <CardContent className="space-y-4">
+            {/* Client Name & Contact */}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-primary" />
+                <span className="font-medium">
+                  {maintenance.client.firstName} {maintenance.client.lastName}
+                </span>
+              </div>
+              <div className="text-sm text-muted-foreground pl-6">{maintenance.client.email}</div>
+              {maintenance.client.phone && (
+                <div className="text-sm text-muted-foreground pl-6">+52 {maintenance.client.phone}</div>
+              )}
             </div>
-            <div className="text-sm text-muted-foreground">{maintenance.client.email}</div>
-            <div className="text-sm text-muted-foreground">{maintenance.client.phone}</div>
+
+            {/* Client Address */}
+            {(maintenance.client.address || maintenance.client.city) && (
+              <div className="space-y-1.5 pt-4 border-t">
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-primary" />
+                  <span className="font-medium text-sm">Ubicación del servicio</span>
+                </div>
+                <div className="text-sm text-muted-foreground pl-6 leading-relaxed">
+                  {maintenance.client.address && <p>{maintenance.client.address}</p>}
+                  {maintenance.client.neighborhood && <p>Col. {maintenance.client.neighborhood}</p>}
+                  <p>
+                    {[maintenance.client.city, maintenance.client.state].filter(Boolean).join(', ')}
+                  </p>
+                  {maintenance.client.postalCode && <p>C.P. {maintenance.client.postalCode}</p>}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

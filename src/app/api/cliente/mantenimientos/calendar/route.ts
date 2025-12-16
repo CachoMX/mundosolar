@@ -74,9 +74,29 @@ export async function GET(request: NextRequest) {
         status: { not: 'CANCELLED' }
       },
       include: {
+        client: {
+          select: {
+            address: true,
+            neighborhood: true,
+            city: true,
+            state: true,
+            postalCode: true,
+          }
+        },
         solarSystem: {
           select: {
             systemName: true,
+            components: {
+              include: {
+                product: {
+                  select: {
+                    name: true,
+                    brand: true,
+                    model: true,
+                  }
+                }
+              }
+            }
           }
         },
         technicians: {
@@ -128,6 +148,17 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Build client address string
+    const buildAddress = (client: any) => {
+      const parts = []
+      if (client?.address) parts.push(client.address)
+      if (client?.neighborhood) parts.push(`Col. ${client.neighborhood}`)
+      if (client?.city) parts.push(client.city)
+      if (client?.state) parts.push(client.state)
+      if (client?.postalCode) parts.push(`C.P. ${client.postalCode}`)
+      return parts.length > 0 ? parts.join(', ') : null
+    }
+
     // Transform client's maintenances to calendar events format (with full details)
     const clientEvents = clientMaintenances.map(m => ({
       id: m.id,
@@ -138,12 +169,23 @@ export async function GET(request: NextRequest) {
         type: m.type,
         status: m.status,
         priority: m.priority,
+        description: m.description, // Include description for client view
         system: m.solarSystem?.systemName || 'General',
         technician: m.technicians[0]?.technician.name || 'Sin asignar',
         solarSystem: m.solarSystem,
         technicians: m.technicians.map(t => ({
           technician: { name: t.technician.name }
         })),
+        // Client address for location
+        clientAddress: buildAddress(m.client),
+        // Components with serial numbers (for panels)
+        components: m.solarSystem?.components?.map(c => ({
+          serialNumber: c.serialNumber,
+          quantity: c.quantity,
+          productName: c.product?.name,
+          productBrand: c.product?.brand,
+          productModel: c.product?.model,
+        })) || [],
         isOwn: true,
         // Include rejection reason for cancelled maintenances
         rejectionReason: m.status === 'CANCELLED' && m.statusHistory[0]?.notes
