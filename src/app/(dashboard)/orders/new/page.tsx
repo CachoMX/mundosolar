@@ -308,7 +308,7 @@ export default function NewOrderPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId: selectedClientId,
-          addressId: selectedAddressId || null,
+          addressId: selectedAddressId === 'main-address' ? null : (selectedAddressId || null),
           cfeReceiptId: selectedCfeReceiptId || null,
           orderType,
           status,
@@ -420,20 +420,19 @@ export default function NewOrderPage() {
                             onSelect={() => {
                               setSelectedClientId(client.id)
                               setClientOpen(false)
-                              // Auto-fill shipping address from default address in client_addresses
-                              const defaultAddr = client.addresses?.find(a => a.isDefault) || client.addresses?.[0]
-                              if (defaultAddr && !shippingAddress) {
+                              // Auto-fill shipping address from main address in clients table
+                              if ((client.address || client.city) && !shippingAddress) {
                                 const addressParts = [
-                                  defaultAddr.address,
-                                  defaultAddr.neighborhood && `Col. ${defaultAddr.neighborhood}`,
-                                  defaultAddr.city,
-                                  defaultAddr.state,
-                                  defaultAddr.postalCode && `C.P. ${defaultAddr.postalCode}`,
+                                  client.address,
+                                  client.neighborhood && `Col. ${client.neighborhood}`,
+                                  client.city,
+                                  client.state,
+                                  client.postalCode && `C.P. ${client.postalCode}`,
                                   'México'
                                 ].filter(Boolean)
                                 setShippingAddress(addressParts.join(', '))
-                                // Auto-select the default address
-                                setSelectedAddressId(defaultAddr.id)
+                                // Auto-select the main address
+                                setSelectedAddressId('main-address')
                               }
                             }}
                           >
@@ -461,7 +460,7 @@ export default function NewOrderPage() {
                   {selectedClient.phone && <p><strong>Teléfono:</strong> {selectedClient.phone}</p>}
 
                   {/* Address Selection Section */}
-                  {selectedClient.addresses && selectedClient.addresses.length > 0 && (
+                  {((selectedClient.address || selectedClient.city) || (selectedClient.addresses && selectedClient.addresses.length > 0)) && (
                     <div className="pt-2 border-t border-border mt-2">
                       <div className="flex items-center gap-2 mb-2">
                         <MapPin className="h-4 w-4 text-blue-600" />
@@ -472,17 +471,29 @@ export default function NewOrderPage() {
                         onValueChange={(value) => {
                           setSelectedAddressId(value)
                           // Auto-fill shipping address based on selection
-                          const addr = selectedClient.addresses?.find(a => a.id === value)
-                          if (addr) {
+                          if (value === 'main-address') {
                             const addressParts = [
-                              addr.address,
-                              addr.neighborhood && `Col. ${addr.neighborhood}`,
-                              addr.city,
-                              addr.state,
-                              addr.postalCode && `C.P. ${addr.postalCode}`,
+                              selectedClient.address,
+                              selectedClient.neighborhood && `Col. ${selectedClient.neighborhood}`,
+                              selectedClient.city,
+                              selectedClient.state,
+                              selectedClient.postalCode && `C.P. ${selectedClient.postalCode}`,
                               'México'
                             ].filter(Boolean)
                             setShippingAddress(addressParts.join(', '))
+                          } else {
+                            const addr = selectedClient.addresses?.find(a => a.id === value)
+                            if (addr) {
+                              const addressParts = [
+                                addr.address,
+                                addr.neighborhood && `Col. ${addr.neighborhood}`,
+                                addr.city,
+                                addr.state,
+                                addr.postalCode && `C.P. ${addr.postalCode}`,
+                                'México'
+                              ].filter(Boolean)
+                              setShippingAddress(addressParts.join(', '))
+                            }
                           }
                           // Reset CFE receipt selection when address changes
                           setSelectedCfeReceiptId('')
@@ -492,18 +503,37 @@ export default function NewOrderPage() {
                           <SelectValue placeholder="Seleccionar dirección..." />
                         </SelectTrigger>
                         <SelectContent>
+                          {/* Main address from clients table */}
+                          {(selectedClient.address || selectedClient.city) && (
+                            <SelectItem value="main-address">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{selectedClient.city || 'Dirección Principal'}</span>
+                                <span className="text-xs text-muted-foreground">(Principal)</span>
+                              </div>
+                            </SelectItem>
+                          )}
+                          {/* Additional addresses from client_addresses */}
                           {selectedClient.addresses?.map((addr) => (
                             <SelectItem key={addr.id} value={addr.id}>
                               <div className="flex items-center gap-2">
                                 <span className="font-medium">{addr.name || addr.city || 'Sin nombre'}</span>
-                                {addr.isDefault && <span className="text-xs text-muted-foreground">(Principal)</span>}
                               </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                       {/* Show selected address details */}
-                      {selectedAddressId && (() => {
+                      {selectedAddressId === 'main-address' && (
+                        <div className="mt-2 text-muted-foreground text-xs space-y-0.5">
+                          {selectedClient.address && <p>{selectedClient.address}</p>}
+                          {selectedClient.neighborhood && <p>Col. {selectedClient.neighborhood}</p>}
+                          <p>
+                            {[selectedClient.city, selectedClient.state].filter(Boolean).join(', ')}
+                            {selectedClient.postalCode && ` - C.P. ${selectedClient.postalCode}`}
+                          </p>
+                        </div>
+                      )}
+                      {selectedAddressId && selectedAddressId !== 'main-address' && (() => {
                         const addr = selectedClient.addresses?.find(a => a.id === selectedAddressId)
                         return addr && (
                           <div className="mt-2 text-muted-foreground text-xs space-y-0.5">

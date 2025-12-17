@@ -1319,15 +1319,18 @@ export default function EditClientPage() {
                                 placeholder="Nombre del medidor"
                               />
                               <Select
-                                value={cfe.addressId || 'none'}
-                                onValueChange={(value) => updateCfeReceipt(cfe.id, 'addressId', value === 'none' ? null : value)}
+                                value={cfe.addressId || 'main-address'}
+                                onValueChange={(value) => updateCfeReceipt(cfe.id, 'addressId', value === 'main-address' ? null : value)}
                               >
                                 <SelectTrigger className="h-8 w-56">
-                                  <SelectValue placeholder="Sin dirección" />
+                                  <SelectValue placeholder="Seleccionar dirección" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="none">Sin dirección</SelectItem>
-                                  {/* All addresses from client_addresses */}
+                                  {/* Main address from clients table */}
+                                  <SelectItem value="main-address">
+                                    {formData.city || 'Dirección Principal'}
+                                  </SelectItem>
+                                  {/* Additional addresses from client_addresses */}
                                   {addresses.filter(a => !a._deleted).map((addr) => (
                                     <SelectItem key={addr.id} value={addr.id}>
                                       {addr.name || addr.city || 'Sin nombre'}

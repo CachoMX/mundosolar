@@ -62,14 +62,14 @@ export async function POST(request: NextRequest) {
 
     const data = await request.json()
 
-    // Create client in database (address now goes to client_addresses table)
+    // Create client in database (main address stored in clients table)
     const client = await withRetry(() => prisma.client.create({
       data: {
         firstName: data.type === 'business' ? data.businessName : data.firstName,
         lastName: data.type === 'business' ? '' : (data.lastName || ''),
         email: data.email,
         phone: data.phone || null,
-        // Keep address in clients table for backwards compatibility, but also create in client_addresses
+        // Main address stored in clients table
         address: data.address || null,
         neighborhood: data.neighborhood || null,
         city: data.city || null,
@@ -87,28 +87,7 @@ export async function POST(request: NextRequest) {
       }
     }))
 
-    // Create address in client_addresses table if address data is provided
-    let addressId: string | null = null
-    const hasAddressData = data.address || data.city || data.neighborhood || data.state || data.postalCode
-
-    if (hasAddressData) {
-      const address = await withRetry(() => prisma.clientAddress.create({
-        data: {
-          clientId: client.id,
-          name: data.city || 'Principal',
-          address: data.address || null,
-          neighborhood: data.neighborhood || null,
-          city: data.city || null,
-          state: data.state || null,
-          postalCode: data.postalCode || null,
-          isDefault: true,
-          isActive: true
-        }
-      }))
-      addressId = address.id
-    }
-
-    // Handle CFE receipt data if provided
+    // Handle CFE receipt data if provided (main meter for main address, addressId = null)
     const hasCfeData = data.cfeRpu || data.cfeMeterNumber || data.cfeRmu || data.cfeAccountNumber ||
                        data.cfeMeterType || data.cfeTariff || data.cfePhases || data.cfeWires ||
                        data.cfeInstalledLoad || data.cfeContractedDemand || data.cfeVoltageLevel ||
@@ -118,7 +97,7 @@ export async function POST(request: NextRequest) {
       await withRetry(() => prisma.cfeReceipt.create({
         data: {
           clientId: client.id,
-          addressId: addressId, // Link to the address in client_addresses
+          addressId: null, // null = main address (stored in clients table)
           name: data.city ? `Medidor - ${data.city}` : 'Medidor Principal',
           rpu: data.cfeRpu || null,
           meterNumber: data.cfeMeterNumber || null,

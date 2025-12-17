@@ -252,9 +252,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     // Handle CFE receipts (array of meters)
     if (data.cfeReceipts && Array.isArray(data.cfeReceipts)) {
       for (const cfe of data.cfeReceipts) {
-        // Resolve addressId: convert temp IDs to real IDs
+        // Resolve addressId: convert temp IDs to real IDs, 'main-address' to null
         let resolvedAddressId: string | null = null
-        if (cfe.addressId && cfe.addressId !== 'none') {
+        if (cfe.addressId && cfe.addressId !== 'none' && cfe.addressId !== 'main-address') {
           if (cfe.addressId.startsWith('temp-')) {
             // Look up the real ID from our map
             resolvedAddressId = tempAddressIdMap[cfe.addressId] || null
@@ -262,6 +262,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
             resolvedAddressId = cfe.addressId
           }
         }
+        // Note: 'main-address' or null = main address from clients table
 
         const cfeData = {
           addressId: resolvedAddressId,
