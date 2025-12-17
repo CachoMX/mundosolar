@@ -20,7 +20,8 @@ import {
   ClipboardList,
   DollarSign,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  HardHat
 } from 'lucide-react'
 
 interface NavigationItem {
@@ -70,6 +71,12 @@ const navigationItems: NavigationItem[] = [
     href: '/solar-systems',
     icon: Zap,
     description: 'Monitoreo de sistemas instalados'
+  },
+  {
+    title: 'Instalaciones',
+    href: '/installations',
+    icon: HardHat,
+    description: 'Tracking de instalaciones y CFE'
   },
   {
     title: 'Facturación',

@@ -35,7 +35,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { ArrowLeft, Save, Plus, Trash2, Loader2, Check, ChevronsUpDown, Search, ScanBarcode, Zap } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, Loader2, Check, ChevronsUpDown, Search, ScanBarcode, Zap, CreditCard, DollarSign } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
@@ -113,6 +114,14 @@ export default function NewOrderPage() {
   const [shippingAddress, setShippingAddress] = useState<string>('')
   const [notes, setNotes] = useState<string>('')
   const [items, setItems] = useState<OrderItem[]>([])
+
+  // Payment/Deposit state
+  const [depositRequired, setDepositRequired] = useState<boolean>(false)
+  const [depositPercentage, setDepositPercentage] = useState<number>(50)
+  const [registerPaymentNow, setRegisterPaymentNow] = useState<boolean>(false)
+  const [paymentMethod, setPaymentMethod] = useState<string>('TRANSFER')
+  const [paymentReference, setPaymentReference] = useState<string>('')
+  const [paymentNotes, setPaymentNotes] = useState<string>('')
 
   // UI state
   const [clientOpen, setClientOpen] = useState(false)
@@ -254,6 +263,7 @@ export default function NewOrderPage() {
   const taxRate = 0.16
   const taxAmount = subtotal * taxRate
   const total = subtotal + taxAmount
+  const depositAmount = depositRequired ? (total * depositPercentage / 100) : 0
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -281,6 +291,18 @@ export default function NewOrderPage() {
           shippingAddress: shippingAddress || null,
           notes: notes || null,
           taxRate,
+          // Payment/deposit info
+          depositRequired,
+          depositPercentage: depositRequired ? depositPercentage : null,
+          depositAmount: depositRequired ? depositAmount : null,
+          // Initial payment if registering now
+          initialPayment: (depositRequired && registerPaymentNow) ? {
+            amount: depositAmount,
+            paymentType: 'DEPOSIT',
+            paymentMethod,
+            referenceNumber: paymentReference || null,
+            notes: paymentNotes || null,
+          } : null,
           items: items.map(item => ({
             productId: item.productId,
             quantity: item.quantity,
@@ -780,6 +802,143 @@ export default function NewOrderPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Payment/Deposit Section */}
+        {items.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5" />
+                Configuración de Pagos
+              </CardTitle>
+              <CardDescription>Configura el anticipo y forma de pago</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Summary row */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted rounded-lg">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Subtotal</p>
+                  <p className="text-lg font-semibold">${subtotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">IVA (16%)</p>
+                  <p className="text-lg font-semibold">${taxAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Total</p>
+                  <p className="text-lg font-bold text-primary">${total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                </div>
+                {depositRequired && (
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Anticipo ({depositPercentage}%)</p>
+                    <p className="text-lg font-bold text-green-600">${depositAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Options row */}
+              <div className="flex flex-wrap gap-6">
+                {/* Dejará anticipo checkbox */}
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="deposit-switch"
+                    checked={depositRequired}
+                    onCheckedChange={setDepositRequired}
+                  />
+                  <Label htmlFor="deposit-switch" className="cursor-pointer">
+                    ¿Dejará anticipo?
+                  </Label>
+                </div>
+              </div>
+
+              {depositRequired && (
+                <div className="space-y-4 p-4 border rounded-lg bg-blue-50 dark:bg-blue-950">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Porcentaje de Anticipo</Label>
+                      <Select value={depositPercentage.toString()} onValueChange={(v) => setDepositPercentage(Number(v))}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="30">30%</SelectItem>
+                          <SelectItem value="40">40%</SelectItem>
+                          <SelectItem value="50">50%</SelectItem>
+                          <SelectItem value="60">60%</SelectItem>
+                          <SelectItem value="70">70%</SelectItem>
+                          <SelectItem value="100">100% (Pago total)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Monto de Anticipo</Label>
+                      <div className="flex items-center gap-2 p-2 bg-white dark:bg-gray-900 rounded-md border">
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-bold">
+                          ${depositAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between text-sm pt-2 border-t">
+                    <span>Saldo restante:</span>
+                    <span className="font-medium">${(total - depositAmount).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                  </div>
+
+                  {/* Register Payment Now */}
+                  <div className="flex items-center space-x-2 pt-2">
+                    <Switch
+                      id="payment-now-switch"
+                      checked={registerPaymentNow}
+                      onCheckedChange={setRegisterPaymentNow}
+                    />
+                    <Label htmlFor="payment-now-switch" className="cursor-pointer">
+                      Registrar pago del anticipo ahora
+                    </Label>
+                  </div>
+
+                  {registerPaymentNow && (
+                    <div className="grid grid-cols-2 gap-4 p-3 bg-green-100 dark:bg-green-900 rounded-lg">
+                      <div className="space-y-2">
+                        <Label>Método de Pago</Label>
+                        <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                          <SelectTrigger className="bg-white dark:bg-gray-900">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="CASH">Efectivo</SelectItem>
+                            <SelectItem value="TRANSFER">Transferencia</SelectItem>
+                            <SelectItem value="CARD">Tarjeta</SelectItem>
+                            <SelectItem value="CHECK">Cheque</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>No. Referencia (opcional)</Label>
+                        <Input
+                          value={paymentReference}
+                          onChange={(e) => setPaymentReference(e.target.value)}
+                          placeholder="Ej: TRANS-12345"
+                          className="bg-white dark:bg-gray-900"
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-2">
+                        <Label>Notas del Pago (opcional)</Label>
+                        <Input
+                          value={paymentNotes}
+                          onChange={(e) => setPaymentNotes(e.target.value)}
+                          placeholder="Notas adicionales sobre el pago..."
+                          className="bg-white dark:bg-gray-900"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Notes */}
         <Card>

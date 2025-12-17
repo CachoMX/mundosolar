@@ -10,11 +10,11 @@ export async function GET() {
       where: { isActive: true }
     }))
 
-    // Get active orders (pending or in progress)
+    // Get active orders (draft, confirmed, in progress, or shipped)
     const activeOrders = await withRetry(() => prisma.order.count({
       where: {
         status: {
-          in: ['PENDING', 'IN_PROGRESS', 'CONFIRMED']
+          in: ['DRAFT', 'CONFIRMED', 'IN_PROGRESS', 'SHIPPED']
         }
       }
     }))
@@ -47,10 +47,10 @@ export async function GET() {
       }
     }))
 
-    // Get total energy generated (this month)
-    const totalEnergyGenerated = await withRetry(() => prisma.energyReading.aggregate({
+    // Get total energy generated this month (from Growatt data for ALL clients)
+    const totalEnergyGenerated = await withRetry(() => prisma.growattDailyHistory.aggregate({
       where: {
-        readingDate: {
+        date: {
           gte: startOfMonth
         }
       },
@@ -59,17 +59,11 @@ export async function GET() {
       }
     }))
 
-    // Get CO2 saved this month
-    const co2SavedThisMonth = await withRetry(() => prisma.energyReading.aggregate({
-      where: {
-        readingDate: {
-          gte: startOfMonth
-        }
-      },
-      _sum: {
-        co2Saved: true
-      }
-    }))
+    // Get CO2 saved this month (from Growatt data for ALL clients)
+    // CO2 factor: 0.5 kg CO2 per kWh (standard factor for solar energy)
+    const co2Factor = 0.5
+    const energyGenerated = Number(totalEnergyGenerated._sum.dailyGeneration) || 0
+    const co2SavedThisMonth = energyGenerated * co2Factor
 
     // Get recent orders
     const recentOrders = await withRetry(() => prisma.order.findMany({
@@ -148,8 +142,8 @@ export async function GET() {
           activeOrders,
           monthlyRevenue: monthlyRevenue._sum.total || 0,
           pendingMaintenance,
-          totalEnergyGenerated: totalEnergyGenerated._sum.dailyGeneration || 0,
-          co2SavedThisMonth: co2SavedThisMonth._sum.co2Saved || 0
+          totalEnergyGenerated: Math.round(energyGenerated * 10) / 10,
+          co2SavedThisMonth: Math.round(co2SavedThisMonth * 10) / 10
         },
         recentOrders: recentOrders.map(order => ({
           id: order.id,

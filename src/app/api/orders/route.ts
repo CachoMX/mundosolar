@@ -267,6 +267,17 @@ export async function POST(request: NextRequest) {
 
     const orderStatus = data.status || 'DRAFT'
 
+    // Calculate payment fields
+    const depositRequired = data.depositRequired || false
+    const depositPercentage = data.depositPercentage ? Number(data.depositPercentage) : 50
+    const depositAmount = data.depositAmount ? Number(data.depositAmount) : (depositRequired ? total * depositPercentage / 100 : null)
+
+    // Calculate initial payment amount if provided
+    const initialPaymentAmount = data.initialPayment ? Number(data.initialPayment.amount) : 0
+    const amountPaid = initialPaymentAmount
+    const balanceDue = total - amountPaid
+    const paymentStatus = amountPaid === 0 ? 'PENDING' : (amountPaid >= total ? 'PAID' : 'PARTIAL')
+
     // Create order with items
     const order = await withRetry(() => prisma.order.create({
       data: {
@@ -280,6 +291,13 @@ export async function POST(request: NextRequest) {
         taxRate,
         taxAmount,
         total,
+        // Payment tracking fields
+        depositRequired,
+        depositPercentage: depositRequired ? depositPercentage : null,
+        depositAmount: depositAmount,
+        amountPaid,
+        balanceDue,
+        paymentStatus,
         shippingAddress: data.shippingAddress || null,
         notes: data.notes || null,
         createdBy: user.id,
@@ -303,6 +321,22 @@ export async function POST(request: NextRequest) {
       }
     }))
 
+    // Create initial payment record if provided
+    if (data.initialPayment && initialPaymentAmount > 0) {
+      await prisma.payment.create({
+        data: {
+          orderId: order.id,
+          amount: initialPaymentAmount,
+          paymentType: data.initialPayment.paymentType || 'DEPOSIT',
+          paymentMethod: data.initialPayment.paymentMethod || null,
+          paymentDate: new Date(),
+          referenceNumber: data.initialPayment.referenceNumber || null,
+          notes: data.initialPayment.notes || null,
+          receivedById: user.id,
+        }
+      })
+    }
+
     // If order is CONFIRMED, automatically deduct inventory
     let inventoryDeduction = null
     if (orderStatus === 'CONFIRMED') {
@@ -314,18 +348,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Build success message
+    let message = 'Orden creada exitosamente'
+    if (orderStatus === 'CONFIRMED') {
+      message = 'Orden creada y inventario actualizado exitosamente'
+    }
+    if (data.initialPayment && initialPaymentAmount > 0) {
+      message += `. Pago de $${initialPaymentAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} registrado`
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         ...order,
         total: Number(order.total),
         subtotal: Number(order.subtotal),
-        taxAmount: Number(order.taxAmount)
+        taxAmount: Number(order.taxAmount),
+        amountPaid: Number(order.amountPaid),
+        balanceDue: Number(order.balanceDue),
+        depositAmount: order.depositAmount ? Number(order.depositAmount) : null,
+        depositPercentage: order.depositPercentage ? Number(order.depositPercentage) : null,
       },
       inventoryDeduction,
-      message: orderStatus === 'CONFIRMED'
-        ? 'Orden creada y inventario actualizado exitosamente'
-        : 'Orden creada exitosamente'
+      message
     })
   } catch (error: any) {
     console.error('Error creating order:', error)

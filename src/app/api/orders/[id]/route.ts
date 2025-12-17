@@ -50,6 +50,10 @@ export async function GET(
         subtotal: Number(order.subtotal),
         taxAmount: Number(order.taxAmount),
         taxRate: Number(order.taxRate),
+        amountPaid: Number(order.amountPaid) || 0,
+        balanceDue: order.balanceDue ? Number(order.balanceDue) : Number(order.total),
+        depositAmount: order.depositAmount ? Number(order.depositAmount) : null,
+        depositPercentage: order.depositPercentage ? Number(order.depositPercentage) : null,
         orderItems: order.orderItems.map(item => ({
           ...item,
           unitPrice: Number(item.unitPrice),

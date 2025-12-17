@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Table,
   TableBody,
@@ -21,6 +24,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import {
   ArrowLeft,
   User,
   Calendar,
@@ -31,11 +43,34 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
-  Truck
+  Truck,
+  DollarSign,
+  Plus,
+  Trash2,
+  CreditCard,
+  Banknote,
+  Building2,
+  Receipt
 } from 'lucide-react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+
+interface Payment {
+  id: string
+  amount: number
+  paymentType: string
+  paymentMethod: string | null
+  paymentDate: string
+  referenceNumber: string | null
+  notes: string | null
+  receivedBy: {
+    id: string
+    name: string | null
+    email: string
+  } | null
+  createdAt: string
+}
 
 interface OrderItem {
   id: string
@@ -72,6 +107,12 @@ interface Order {
   taxRate: number
   taxAmount: number
   total: number
+  amountPaid: number
+  balanceDue: number
+  paymentStatus: string
+  depositRequired: boolean
+  depositPercentage: number | null
+  depositAmount: number | null
   shippingAddress: string | null
   notes: string | null
   createdAt: string
@@ -95,8 +136,23 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [error, setError] = useState<string | null>(null)
   const [updating, setUpdating] = useState(false)
 
+  // Payment states
+  const [payments, setPayments] = useState<Payment[]>([])
+  const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
+  const [savingPayment, setSavingPayment] = useState(false)
+  const [newPayment, setNewPayment] = useState({
+    amount: '',
+    paymentType: 'PARTIAL',
+    paymentMethod: 'TRANSFER',
+    paymentDate: new Date().toISOString().split('T')[0],
+    referenceNumber: '',
+    notes: ''
+  })
+
   useEffect(() => {
     fetchOrder()
+    fetchPayments()
   }, [resolvedParams.id])
 
   const fetchOrder = async () => {
@@ -141,6 +197,152 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     } finally {
       setUpdating(false)
     }
+  }
+
+  const fetchPayments = async () => {
+    try {
+      setPaymentsLoading(true)
+      const response = await fetch(`/api/orders/${resolvedParams.id}/payments`)
+      const result = await response.json()
+
+      if (result.success) {
+        setPayments(result.data.payments)
+        // Update order payment info
+        if (order) {
+          setOrder({
+            ...order,
+            amountPaid: result.data.order.amountPaid,
+            balanceDue: result.data.order.balanceDue,
+            paymentStatus: result.data.order.paymentStatus
+          })
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching payments:', err)
+    } finally {
+      setPaymentsLoading(false)
+    }
+  }
+
+  const handleAddPayment = async () => {
+    if (!newPayment.amount || parseFloat(newPayment.amount) <= 0) {
+      alert('Ingresa un monto válido')
+      return
+    }
+
+    setSavingPayment(true)
+    try {
+      const response = await fetch(`/api/orders/${resolvedParams.id}/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: parseFloat(newPayment.amount),
+          paymentType: newPayment.paymentType,
+          paymentMethod: newPayment.paymentMethod,
+          paymentDate: newPayment.paymentDate,
+          referenceNumber: newPayment.referenceNumber || null,
+          notes: newPayment.notes || null
+        })
+      })
+      const result = await response.json()
+
+      if (result.success) {
+        setPayments([result.data.payment, ...payments])
+        if (order) {
+          setOrder({
+            ...order,
+            amountPaid: result.data.orderSummary.amountPaid,
+            balanceDue: result.data.orderSummary.balanceDue,
+            paymentStatus: result.data.orderSummary.paymentStatus
+          })
+        }
+        setPaymentDialogOpen(false)
+        setNewPayment({
+          amount: '',
+          paymentType: 'PARTIAL',
+          paymentMethod: 'TRANSFER',
+          paymentDate: new Date().toISOString().split('T')[0],
+          referenceNumber: '',
+          notes: ''
+        })
+      } else {
+        alert(result.error || 'Error al registrar pago')
+      }
+    } catch (err) {
+      console.error('Error adding payment:', err)
+      alert('Error al registrar pago')
+    } finally {
+      setSavingPayment(false)
+    }
+  }
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!confirm('¿Estás seguro de eliminar este pago?')) return
+
+    try {
+      const response = await fetch(`/api/orders/${resolvedParams.id}/payments/${paymentId}`, {
+        method: 'DELETE'
+      })
+      const result = await response.json()
+
+      if (result.success) {
+        setPayments(payments.filter(p => p.id !== paymentId))
+        if (order) {
+          setOrder({
+            ...order,
+            amountPaid: result.data.orderSummary.amountPaid,
+            balanceDue: result.data.orderSummary.balanceDue,
+            paymentStatus: result.data.orderSummary.paymentStatus
+          })
+        }
+      } else {
+        alert(result.error || 'Error al eliminar pago')
+      }
+    } catch (err) {
+      console.error('Error deleting payment:', err)
+      alert('Error al eliminar pago')
+    }
+  }
+
+  const getPaymentStatusBadge = (status: string) => {
+    const statusMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+      PENDING: { label: 'Pendiente', variant: 'outline' },
+      PARTIAL: { label: 'Parcial', variant: 'secondary' },
+      PAID: { label: 'Pagado', variant: 'default' },
+      REFUNDED: { label: 'Reembolsado', variant: 'destructive' }
+    }
+    const info = statusMap[status] || { label: status, variant: 'outline' }
+    return <Badge variant={info.variant}>{info.label}</Badge>
+  }
+
+  const getPaymentTypeLabel = (type: string) => {
+    const types: Record<string, string> = {
+      DEPOSIT: 'Anticipo',
+      PARTIAL: 'Abono',
+      FINAL: 'Liquidación',
+      REFUND: 'Reembolso'
+    }
+    return types[type] || type
+  }
+
+  const getPaymentMethodIcon = (method: string | null) => {
+    switch (method) {
+      case 'CASH': return <Banknote className="h-4 w-4" />
+      case 'TRANSFER': return <Building2 className="h-4 w-4" />
+      case 'CARD': return <CreditCard className="h-4 w-4" />
+      case 'CHECK': return <Receipt className="h-4 w-4" />
+      default: return <DollarSign className="h-4 w-4" />
+    }
+  }
+
+  const getPaymentMethodLabel = (method: string | null) => {
+    const methods: Record<string, string> = {
+      CASH: 'Efectivo',
+      TRANSFER: 'Transferencia',
+      CARD: 'Tarjeta',
+      CHECK: 'Cheque'
+    }
+    return method ? methods[method] || method : 'No especificado'
   }
 
   const getStatusBadge = (status: string) => {
@@ -419,6 +621,206 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </CardContent>
         </Card>
       )}
+
+      {/* Payments Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Pagos
+              </CardTitle>
+              <CardDescription className="flex items-center gap-2 mt-1">
+                Estado: {getPaymentStatusBadge(order.paymentStatus || 'PENDING')}
+              </CardDescription>
+            </div>
+            <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm">
+                  <Plus className="h-4 w-4 mr-1" />
+                  Registrar Pago
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Registrar Nuevo Pago</DialogTitle>
+                  <DialogDescription>
+                    Orden {order.orderNumber} - Saldo pendiente: ${((order.balanceDue ?? order.total) - (order.amountPaid || 0)).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="amount">Monto *</Label>
+                      <Input
+                        id="amount"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={newPayment.amount}
+                        onChange={(e) => setNewPayment({ ...newPayment, amount: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="paymentDate">Fecha</Label>
+                      <Input
+                        id="paymentDate"
+                        type="date"
+                        value={newPayment.paymentDate}
+                        onChange={(e) => setNewPayment({ ...newPayment, paymentDate: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="paymentType">Tipo de Pago</Label>
+                      <Select
+                        value={newPayment.paymentType}
+                        onValueChange={(value) => setNewPayment({ ...newPayment, paymentType: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="DEPOSIT">Anticipo</SelectItem>
+                          <SelectItem value="PARTIAL">Abono</SelectItem>
+                          <SelectItem value="FINAL">Liquidación</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="paymentMethod">Método de Pago</Label>
+                      <Select
+                        value={newPayment.paymentMethod}
+                        onValueChange={(value) => setNewPayment({ ...newPayment, paymentMethod: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="CASH">Efectivo</SelectItem>
+                          <SelectItem value="TRANSFER">Transferencia</SelectItem>
+                          <SelectItem value="CARD">Tarjeta</SelectItem>
+                          <SelectItem value="CHECK">Cheque</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="referenceNumber">Referencia / Folio</Label>
+                    <Input
+                      id="referenceNumber"
+                      placeholder="Número de referencia o folio"
+                      value={newPayment.referenceNumber}
+                      onChange={(e) => setNewPayment({ ...newPayment, referenceNumber: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="notes">Notas</Label>
+                    <Textarea
+                      id="notes"
+                      placeholder="Notas adicionales..."
+                      value={newPayment.notes}
+                      onChange={(e) => setNewPayment({ ...newPayment, notes: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleAddPayment} disabled={savingPayment}>
+                    {savingPayment && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    Registrar Pago
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Payment Summary */}
+          <div className="grid grid-cols-3 gap-4 mb-6 p-4 bg-muted rounded-lg">
+            <div>
+              <p className="text-sm text-muted-foreground">Total de la Orden</p>
+              <p className="text-xl font-bold">${order.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Total Pagado</p>
+              <p className="text-xl font-bold text-green-600">${(order.amountPaid || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Saldo Pendiente</p>
+              <p className="text-xl font-bold text-orange-600">
+                ${((order.balanceDue ?? order.total) - (order.amountPaid || 0) > 0 ? (order.balanceDue ?? order.total) - (order.amountPaid || 0) : order.total - (order.amountPaid || 0)).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
+
+          {/* Payments List */}
+          {paymentsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : payments.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <DollarSign className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>No hay pagos registrados</p>
+            </div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Método</TableHead>
+                    <TableHead>Referencia</TableHead>
+                    <TableHead className="text-right">Monto</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {payments.map((payment) => (
+                    <TableRow key={payment.id}>
+                      <TableCell>
+                        {format(new Date(payment.paymentDate), 'dd/MM/yyyy', { locale: es })}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{getPaymentTypeLabel(payment.paymentType)}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {getPaymentMethodIcon(payment.paymentMethod)}
+                          <span className="text-sm">{getPaymentMethodLabel(payment.paymentMethod)}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {payment.referenceNumber || '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        ${payment.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleDeletePayment(payment.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

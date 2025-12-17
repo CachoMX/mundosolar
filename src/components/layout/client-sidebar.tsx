@@ -12,7 +12,8 @@ import {
   Wrench,
   User,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  CreditCard
 } from 'lucide-react'
 
 interface NavigationItem {
@@ -40,6 +41,12 @@ const navigation: NavigationItem[] = [
     href: '/cliente/mantenimientos',
     icon: Wrench,
     description: 'Programación de mantenimientos'
+  },
+  {
+    title: 'Mis Pagos',
+    href: '/cliente/pagos',
+    icon: CreditCard,
+    description: 'Historial de pagos y saldos'
   },
   {
     title: 'Mi Perfil',
