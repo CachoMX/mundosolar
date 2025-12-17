@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -131,6 +132,7 @@ interface Order {
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -188,6 +190,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
       if (result.success) {
         setOrder({ ...order, status: newStatus })
+        // Invalidate caches
+        queryClient.invalidateQueries({ queryKey: ['orders'] })
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
       } else {
         alert(result.error || 'Error al actualizar estado')
       }
@@ -256,6 +261,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             paymentStatus: result.data.orderSummary.paymentStatus
           })
         }
+        // Invalidate caches
+        queryClient.invalidateQueries({ queryKey: ['orders'] })
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
         setPaymentDialogOpen(false)
         setNewPayment({
           amount: '',
@@ -295,6 +303,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             paymentStatus: result.data.orderSummary.paymentStatus
           })
         }
+        // Invalidate caches
+        queryClient.invalidateQueries({ queryKey: ['orders'] })
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
       } else {
         alert(result.error || 'Error al eliminar pago')
       }

@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,6 +48,45 @@ interface ContactSettings {
   contact_postal_code: string
   contact_phone: string
   contact_email: string
+}
+
+// Client Address interface
+interface ClientAddressData {
+  id: string
+  name: string
+  address: string
+  city: string
+  state: string
+  postalCode: string
+  neighborhood: string
+  isDefault: boolean
+  isActive: boolean
+  _deleted?: boolean
+}
+
+// CFE Receipt interface (Medidor)
+interface CfeReceiptData {
+  id: string
+  addressId: string | null
+  name: string
+  rpu: string
+  serviceNumber: string
+  meterNumber: string
+  rmu: string
+  accountNumber: string
+  meterType: string
+  tariff: string
+  phases: number
+  wires: number
+  installedLoad: number
+  contractedDemand: number
+  voltageLevel: number
+  mediumVoltage: boolean
+  cfeBranch: string
+  cfeFolio: string
+  receiptFileUrl: string
+  notes: string
+  _deleted?: boolean
 }
 
 // Maintenance interface
@@ -98,6 +139,7 @@ interface ClientFormData {
 
   // CFE Receipt Data
   cfeRpu: string
+  cfeServiceNumber: string
   cfeMeterNumber: string
   cfeRmu: string
   cfeAccountNumber: string
@@ -168,14 +210,19 @@ const INVERTER_BRANDS = [
 export default function EditClientPage() {
   const router = useRouter()
   const params = useParams()
+  const queryClient = useQueryClient()
   const clientId = params.id as string
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const [panels, setPanels] = useState<SolarPanel[]>([])
   const [inverters, setInverters] = useState<Inverter[]>([])
   const [maintenances, setMaintenances] = useState<ClientMaintenance[]>([])
+  const [addresses, setAddresses] = useState<ClientAddressData[]>([])
+  const [cfeReceipts, setCfeReceipts] = useState<CfeReceiptData[]>([])
+  const [uploadingMeterIndex, setUploadingMeterIndex] = useState<number | null>(null)
   const [loadingMaintenances, setLoadingMaintenances] = useState(false)
   const [contactSettings, setContactSettings] = useState<ContactSettings>({
     contact_name: '',
@@ -211,6 +258,7 @@ export default function EditClientPage() {
     growattPassword: '',
     expectedDailyGeneration: 0,
     cfeRpu: '',
+    cfeServiceNumber: '',
     cfeMeterNumber: '',
     cfeRmu: '',
     cfeAccountNumber: '',
@@ -268,11 +316,11 @@ export default function EditClientPage() {
       
       if (result.success) {
         const client = result.data
-        
+
         // Determine if this is a business (heuristic: if lastName is empty, it's probably business)
         const isBusinessType = !client.lastName || client.lastName.trim() === ''
-        
-        // Get CFE receipt data if available
+
+        // Get CFE receipt data if available (for backwards compatibility)
         const cfeReceipt = client.cfeReceipts?.[0] || null
 
         setFormData({
@@ -298,6 +346,7 @@ export default function EditClientPage() {
           growattPassword: client.growattPassword || '',
           expectedDailyGeneration: client.expectedDailyGeneration || 0,
           cfeRpu: cfeReceipt?.rpu || '',
+          cfeServiceNumber: cfeReceipt?.serviceNumber || '',
           cfeMeterNumber: cfeReceipt?.meterNumber || '',
           cfeRmu: cfeReceipt?.rmu || '',
           cfeAccountNumber: cfeReceipt?.accountNumber || '',
@@ -314,6 +363,47 @@ export default function EditClientPage() {
           cfeReceiptFileUrl: cfeReceipt?.receiptFileUrl || '',
           monthlyGeneration: client.monthlyGeneration || 0
         })
+
+        // Load addresses
+        if (client.addresses && client.addresses.length > 0) {
+          setAddresses(client.addresses.map((addr: any) => ({
+            id: addr.id,
+            name: addr.name || '',
+            address: addr.address || '',
+            city: addr.city || '',
+            state: addr.state || '',
+            postalCode: addr.postalCode || '',
+            neighborhood: addr.neighborhood || '',
+            isDefault: addr.isDefault || false,
+            isActive: addr.isActive !== false
+          })))
+        }
+
+        // Load CFE receipts (medidores)
+        if (client.cfeReceipts && client.cfeReceipts.length > 0) {
+          setCfeReceipts(client.cfeReceipts.map((cfe: any) => ({
+            id: cfe.id,
+            addressId: cfe.addressId || null,
+            name: cfe.name || '',
+            rpu: cfe.rpu || '',
+            serviceNumber: cfe.serviceNumber || '',
+            meterNumber: cfe.meterNumber || '',
+            rmu: cfe.rmu || '',
+            accountNumber: cfe.accountNumber || '',
+            meterType: cfe.meterType || '',
+            tariff: cfe.tariff || '',
+            phases: cfe.phases || 0,
+            wires: cfe.wires || 0,
+            installedLoad: cfe.installedLoad || 0,
+            contractedDemand: cfe.contractedDemand || 0,
+            voltageLevel: cfe.voltageLevel || 0,
+            mediumVoltage: cfe.mediumVoltage || false,
+            cfeBranch: cfe.cfeBranch || '',
+            cfeFolio: cfe.cfeFolio || '',
+            receiptFileUrl: cfe.receiptFileUrl || '',
+            notes: cfe.notes || ''
+          })))
+        }
 
         // Load panels and inverters from solar systems
         if (client.solarSystems && client.solarSystems.length > 0) {
@@ -417,11 +507,132 @@ export default function EditClientPage() {
     setInverters(prev => prev.filter(inverter => inverter.id !== id))
   }
 
-  // CFE Receipt file upload handlers
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  // Address management functions
+  const addAddress = () => {
+    const newAddressId = `temp-${crypto.randomUUID()}`
+    const addressNumber = addresses.filter(a => !a._deleted).length + 1
 
+    // Add the new address
+    setAddresses(prev => [...prev, {
+      id: newAddressId,
+      name: `Dirección ${addressNumber}`,
+      address: '',
+      city: '',
+      state: '',
+      postalCode: '',
+      neighborhood: '',
+      isDefault: prev.length === 0,
+      isActive: true
+    }])
+
+    // Also create a CFE receipt linked to this address
+    setCfeReceipts(prev => [...prev, {
+      id: `temp-${crypto.randomUUID()}`,
+      addressId: newAddressId,
+      name: `Medidor - Dirección ${addressNumber}`,
+      rpu: '',
+      serviceNumber: '',
+      meterNumber: '',
+      rmu: '',
+      accountNumber: '',
+      meterType: '',
+      tariff: '',
+      phases: 0,
+      wires: 0,
+      installedLoad: 0,
+      contractedDemand: 0,
+      voltageLevel: 0,
+      mediumVoltage: false,
+      cfeBranch: '',
+      cfeFolio: '',
+      receiptFileUrl: '',
+      notes: ''
+    }])
+  }
+
+  const updateAddress = (id: string, field: keyof ClientAddressData, value: string | boolean) => {
+    setAddresses(prev => prev.map(addr => {
+      if (addr.id === id) {
+        // If setting this address as default, unset all others
+        if (field === 'isDefault' && value === true) {
+          return { ...addr, [field]: value }
+        }
+        return { ...addr, [field]: value }
+      }
+      // If setting another address as default, unset this one
+      if (field === 'isDefault' && value === true) {
+        return { ...addr, isDefault: false }
+      }
+      return addr
+    }))
+  }
+
+  const removeAddress = (id: string) => {
+    // If it's a temp address, just remove it
+    if (id.startsWith('temp-')) {
+      setAddresses(prev => prev.filter(addr => addr.id !== id))
+      // Also remove temp CFE receipts linked to this address
+      setCfeReceipts(prev => prev.filter(cfe =>
+        !(cfe.addressId === id && cfe.id.startsWith('temp-'))
+      ).map(cfe =>
+        cfe.addressId === id ? { ...cfe, addressId: null } : cfe
+      ))
+    } else {
+      // Mark for deletion
+      setAddresses(prev => prev.map(addr =>
+        addr.id === id ? { ...addr, _deleted: true } : addr
+      ))
+      // Mark linked CFE receipts for deletion or unlink them
+      setCfeReceipts(prev => prev.map(cfe =>
+        cfe.addressId === id ? { ...cfe, _deleted: true } : cfe
+      ))
+    }
+  }
+
+  // CFE Receipt (Medidor) management functions
+  const addCfeReceipt = () => {
+    setCfeReceipts(prev => [...prev, {
+      id: `temp-${crypto.randomUUID()}`,
+      addressId: addresses.find(a => a.isDefault && !a._deleted)?.id || null,
+      name: `Medidor ${prev.length + 1}`,
+      rpu: '',
+      serviceNumber: '',
+      meterNumber: '',
+      rmu: '',
+      accountNumber: '',
+      meterType: '',
+      tariff: '',
+      phases: 0,
+      wires: 0,
+      installedLoad: 0,
+      contractedDemand: 0,
+      voltageLevel: 0,
+      mediumVoltage: false,
+      cfeBranch: '',
+      cfeFolio: '',
+      receiptFileUrl: '',
+      notes: ''
+    }])
+  }
+
+  const updateCfeReceipt = (id: string, field: keyof CfeReceiptData, value: string | number | boolean | null) => {
+    setCfeReceipts(prev => prev.map(cfe =>
+      cfe.id === id ? { ...cfe, [field]: value } : cfe
+    ))
+  }
+
+  const removeCfeReceipt = (id: string) => {
+    if (id.startsWith('temp-')) {
+      setCfeReceipts(prev => prev.filter(cfe => cfe.id !== id))
+    } else {
+      setCfeReceipts(prev => prev.map(cfe =>
+        cfe.id === id ? { ...cfe, _deleted: true } : cfe
+      ))
+    }
+  }
+
+  // CFE Receipt file upload handlers
+  const processFileUpload = async (file: File) => {
     // Validate file type (PDF and images)
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
     if (!allowedTypes.includes(file.type)) {
@@ -465,12 +676,43 @@ export default function EditClientPage() {
 
       // Update form data
       handleInputChange('cfeReceiptFileUrl', publicUrl)
+      toast.success('Archivo subido correctamente')
 
     } catch (error) {
       console.error('Error uploading file:', error)
       alert('Error al subir el archivo. Por favor intente de nuevo.')
     } finally {
       setUploading(false)
+    }
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await processFileUpload(file)
+  }
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const files = e.dataTransfer.files
+    if (files && files.length > 0) {
+      await processFileUpload(files[0])
     }
   }
 
@@ -523,7 +765,11 @@ export default function EditClientPage() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          addresses: addresses,
+          cfeReceipts: cfeReceipts
+        })
       })
 
       const result = await response.json()
@@ -532,8 +778,13 @@ export default function EditClientPage() {
         throw new Error(result.error || 'Error al actualizar cliente')
       }
 
-      // Redirect back to clients list
-      router.push('/clients')
+      // Invalidate cache to refresh data
+      await queryClient.invalidateQueries({ queryKey: ['clients'] })
+      await queryClient.invalidateQueries({ queryKey: ['client', clientId] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+
+      // Show success toast notification
+      toast.success('Datos guardados correctamente')
       
     } catch (error) {
       console.error('Error updating client:', error)
@@ -754,73 +1005,194 @@ export default function EditClientPage() {
               {/* Address Information */}
               <Card className="md:col-span-2">
                 <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <MapPin className="mr-2 h-5 w-5" />
-                    Dirección
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center">
+                      <MapPin className="mr-2 h-5 w-5" />
+                      Dirección Principal
+                    </CardTitle>
+                    <Button type="button" variant="outline" size="sm" onClick={addAddress}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Agregar Dirección
+                    </Button>
+                  </div>
                 </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <Label htmlFor="address">Calle y Número</Label>
-                    <Input
-                      id="address"
-                      value={formData.address}
-                      onChange={(e) => handleInputChange('address', e.target.value)}
-                      placeholder="Av. Reforma 123"
-                    />
+                <CardContent className="space-y-6">
+                  {/* Main Address */}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <Label htmlFor="address">Calle y Número</Label>
+                      <Input
+                        id="address"
+                        value={formData.address}
+                        onChange={(e) => handleInputChange('address', e.target.value)}
+                        placeholder="Av. Reforma 123"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="neighborhood">Colonia</Label>
+                      <Input
+                        id="neighborhood"
+                        value={formData.neighborhood}
+                        onChange={(e) => handleInputChange('neighborhood', e.target.value)}
+                        placeholder="Centro"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="city">Ciudad</Label>
+                      <Input
+                        id="city"
+                        value={formData.city}
+                        onChange={(e) => handleInputChange('city', e.target.value)}
+                        placeholder="Ciudad de México"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="state">Estado</Label>
+                      <Select value={formData.state || undefined} onValueChange={(value) => handleInputChange('state', value)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar estado" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MEXICAN_STATES.map((state) => (
+                            <SelectItem key={state} value={state}>
+                              {state}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="postalCode">Código Postal</Label>
+                      <Input
+                        id="postalCode"
+                        value={formData.postalCode}
+                        onChange={(e) => handleInputChange('postalCode', e.target.value)}
+                        placeholder="06000"
+                        maxLength={5}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="country">País</Label>
+                      <Input
+                        id="country"
+                        value={formData.country}
+                        onChange={(e) => handleInputChange('country', e.target.value)}
+                        disabled
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor="neighborhood">Colonia</Label>
-                    <Input
-                      id="neighborhood"
-                      value={formData.neighborhood}
-                      onChange={(e) => handleInputChange('neighborhood', e.target.value)}
-                      placeholder="Centro"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="city">Ciudad</Label>
-                    <Input
-                      id="city"
-                      value={formData.city}
-                      onChange={(e) => handleInputChange('city', e.target.value)}
-                      placeholder="Ciudad de México"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="state">Estado</Label>
-                    <Select value={formData.state} onValueChange={(value) => handleInputChange('state', value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar estado" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {MEXICAN_STATES.map((state) => (
-                          <SelectItem key={state} value={state}>
-                            {state}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="postalCode">Código Postal</Label>
-                    <Input
-                      id="postalCode"
-                      value={formData.postalCode}
-                      onChange={(e) => handleInputChange('postalCode', e.target.value)}
-                      placeholder="06000"
-                      maxLength={5}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="country">País</Label>
-                    <Input
-                      id="country"
-                      value={formData.country}
-                      onChange={(e) => handleInputChange('country', e.target.value)}
-                      disabled
-                    />
-                  </div>
+
+                  {/* Additional Addresses */}
+                  {addresses.filter(a => !a._deleted).length > 0 && (
+                    <div className="space-y-4 pt-4 border-t">
+                      <h4 className="font-medium text-sm text-muted-foreground">Direcciones Adicionales</h4>
+                      {addresses.filter(a => !a._deleted).map((addr) => (
+                        <div key={addr.id} className="border rounded-lg p-4 bg-muted/30">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={addr.name}
+                                onChange={(e) => updateAddress(addr.id, 'name', e.target.value)}
+                                className="font-medium h-8 w-48"
+                                placeholder="Nombre de la dirección"
+                              />
+                              {addr.isDefault && (
+                                <Badge variant="secondary">Principal</Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {!addr.isDefault && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => updateAddress(addr.id, 'isDefault', true)}
+                                  className="text-xs"
+                                >
+                                  Marcar como principal
+                                </Button>
+                              )}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeAddress(addr.id)}
+                                className="text-destructive hover:text-destructive h-8 w-8 p-0"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-3">
+                            <div>
+                              <Label className="text-xs">Calle y Número</Label>
+                              <Input
+                                value={addr.address}
+                                onChange={(e) => updateAddress(addr.id, 'address', e.target.value)}
+                                placeholder="Av. Reforma 123"
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Colonia</Label>
+                              <Input
+                                value={addr.neighborhood}
+                                onChange={(e) => updateAddress(addr.id, 'neighborhood', e.target.value)}
+                                placeholder="Centro"
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Ciudad</Label>
+                              <Input
+                                value={addr.city}
+                                onChange={(e) => updateAddress(addr.id, 'city', e.target.value)}
+                                placeholder="Colima"
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Estado</Label>
+                              <Select value={addr.state || undefined} onValueChange={(value) => updateAddress(addr.id, 'state', value)}>
+                                <SelectTrigger className="h-8">
+                                  <SelectValue placeholder="Seleccionar" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {MEXICAN_STATES.map((state) => (
+                                    <SelectItem key={state} value={state}>{state}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="text-xs">C.P.</Label>
+                              <Input
+                                value={addr.postalCode}
+                                onChange={(e) => updateAddress(addr.id, 'postalCode', e.target.value)}
+                                placeholder="28000"
+                                className="h-8"
+                                maxLength={5}
+                              />
+                            </div>
+                          </div>
+                          {/* CFE Meter indicator */}
+                          {cfeReceipts.filter(c => !c._deleted && c.addressId === addr.id).length > 0 && (
+                            <div className="mt-3 pt-3 border-t flex items-center justify-between">
+                              <div className="flex items-center gap-2 text-sm">
+                                <Zap className="h-4 w-4 text-yellow-600" />
+                                <span className="text-muted-foreground">
+                                  {cfeReceipts.filter(c => !c._deleted && c.addressId === addr.id).length} medidor(es) CFE asociado(s)
+                                </span>
+                              </div>
+                              <span className="text-xs text-primary">
+                                Ve a la pestaña CFE para completar los datos del medidor
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -905,259 +1277,345 @@ export default function EditClientPage() {
             </div>
           </TabsContent>
 
-          {/* TAB: CFE */}
+          {/* TAB: CFE - Medidores */}
           <TabsContent value="cfe">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Zap className="mr-2 h-5 w-5" />
-                  Base CFE
-                </CardTitle>
-                <CardDescription>
-                  Información del recibo de luz del cliente
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Recibo CFE File Upload */}
-                <div className="border rounded-lg p-4 bg-muted/30">
-                  <Label className="text-base font-medium mb-3 block">Recibo CFE</Label>
-                  {formData.cfeReceiptFileUrl ? (
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2 flex-1 p-3 bg-background rounded border">
-                        <File className="h-5 w-5 text-primary" />
-                        <span className="text-sm truncate flex-1">Recibo CFE subido</span>
-                        <a
-                          href={formData.cfeReceiptFileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline flex items-center gap-1"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          Ver
-                        </a>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleRemoveFile}
-                          className="text-destructive hover:text-destructive h-8 w-8 p-0"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
+            <div className="grid gap-6">
+              {/* Medidores CFE Section */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center">
+                        <Zap className="mr-2 h-5 w-5" />
+                        Medidores CFE
+                      </CardTitle>
+                      <CardDescription>
+                        Información de los medidores de luz del cliente
+                      </CardDescription>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={addCfeReceipt}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Agregar Medidor
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {cfeReceipts.filter(c => !c._deleted).length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+                      <Zap className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                      <p>No hay medidores registrados</p>
+                      <p className="text-sm mt-2">Agrega medidores CFE para este cliente</p>
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg bg-background">
-                      <input
-                        type="file"
-                        id="cfeReceiptFile"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                        disabled={uploading}
-                      />
-                      <label
-                        htmlFor="cfeReceiptFile"
-                        className="cursor-pointer flex flex-col items-center"
-                      >
-                        {uploading ? (
-                          <>
-                            <Loader2 className="h-10 w-10 text-muted-foreground animate-spin mb-2" />
-                            <span className="text-sm text-muted-foreground">Subiendo archivo...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="h-10 w-10 text-muted-foreground mb-2" />
-                            <span className="text-sm font-medium text-primary">Subir recibo CFE</span>
-                            <span className="text-xs text-muted-foreground mt-1">PDF o imagen (máx. 5MB)</span>
-                          </>
-                        )}
-                      </label>
+                    <div className="space-y-6">
+                      {cfeReceipts.filter(c => !c._deleted).map((cfe, index) => (
+                        <div key={cfe.id} className="border rounded-lg p-4">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <Input
+                                value={cfe.name}
+                                onChange={(e) => updateCfeReceipt(cfe.id, 'name', e.target.value)}
+                                className="font-medium h-8 w-48"
+                                placeholder="Nombre del medidor"
+                              />
+                              <Select
+                                value={cfe.addressId || 'none'}
+                                onValueChange={(value) => updateCfeReceipt(cfe.id, 'addressId', value === 'none' ? null : value)}
+                              >
+                                <SelectTrigger className="h-8 w-56">
+                                  <SelectValue placeholder="Sin dirección" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">Sin dirección</SelectItem>
+                                  {/* All addresses from client_addresses */}
+                                  {addresses.filter(a => !a._deleted).map((addr) => (
+                                    <SelectItem key={addr.id} value={addr.id}>
+                                      {addr.name || addr.city || 'Sin nombre'}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeCfeReceipt(cfe.id)}
+                              className="text-destructive hover:text-destructive h-8 w-8 p-0"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+
+                          {/* File Upload for this meter */}
+                          <div className="mb-4 p-3 bg-muted/30 rounded-lg">
+                            {cfe.receiptFileUrl ? (
+                              <div className="flex items-center gap-3">
+                                <File className="h-5 w-5 text-primary" />
+                                <span className="text-sm flex-1">Recibo CFE subido</span>
+                                <a
+                                  href={cfe.receiptFileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline flex items-center gap-1 text-sm"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                  Ver
+                                </a>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => updateCfeReceipt(cfe.id, 'receiptFileUrl', '')}
+                                  className="text-destructive hover:text-destructive h-7 w-7 p-0"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="file"
+                                  id={`cfeFile-${cfe.id}`}
+                                  accept=".pdf,.jpg,.jpeg,.png"
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0]
+                                    if (!file) return
+                                    setUploadingMeterIndex(index)
+                                    try {
+                                      const supabase = createClient()
+                                      const fileExt = file.name.split('.').pop()
+                                      const fileName = `${clientId}-${cfe.id}-${Date.now()}.${fileExt}`
+                                      const filePath = `cfe-receipts/${fileName}`
+                                      const { error } = await supabase.storage.from('documents').upload(filePath, file, { cacheControl: '3600', upsert: true })
+                                      if (error) throw error
+                                      const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(filePath)
+                                      updateCfeReceipt(cfe.id, 'receiptFileUrl', publicUrl)
+                                      toast.success('Archivo subido correctamente')
+                                    } catch (err) {
+                                      console.error('Error uploading:', err)
+                                      toast.error('Error al subir archivo')
+                                    } finally {
+                                      setUploadingMeterIndex(null)
+                                    }
+                                  }}
+                                />
+                                <label
+                                  htmlFor={`cfeFile-${cfe.id}`}
+                                  className="cursor-pointer flex items-center gap-2 text-sm text-primary hover:underline"
+                                >
+                                  {uploadingMeterIndex === index ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Upload className="h-4 w-4" />
+                                  )}
+                                  {uploadingMeterIndex === index ? 'Subiendo...' : 'Subir recibo CFE'}
+                                </label>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* CFE Data Fields */}
+                          <div className="grid gap-3 md:grid-cols-4">
+                            <div>
+                              <Label className="text-xs">RPU</Label>
+                              <Input
+                                value={cfe.rpu}
+                                onChange={(e) => updateCfeReceipt(cfe.id, 'rpu', e.target.value)}
+                                placeholder="208190705269"
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">N° de Servicio</Label>
+                              <Input
+                                value={cfe.serviceNumber}
+                                onChange={(e) => updateCfeReceipt(cfe.id, 'serviceNumber', e.target.value)}
+                                placeholder="123456789012"
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">N° Medidor</Label>
+                              <Input
+                                value={cfe.meterNumber}
+                                onChange={(e) => updateCfeReceipt(cfe.id, 'meterNumber', e.target.value)}
+                                placeholder="25T73E"
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">RMU</Label>
+                              <Input
+                                value={cfe.rmu}
+                                onChange={(e) => updateCfeReceipt(cfe.id, 'rmu', e.target.value)}
+                                placeholder="28610 25-06-27..."
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">N° Cuenta CFE</Label>
+                              <Input
+                                value={cfe.accountNumber}
+                                onChange={(e) => updateCfeReceipt(cfe.id, 'accountNumber', e.target.value)}
+                                placeholder="19DF25E031920760"
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Tipo Medidor</Label>
+                              <Select value={cfe.meterType || undefined} onValueChange={(value) => updateCfeReceipt(cfe.id, 'meterType', value)}>
+                                <SelectTrigger className="h-8">
+                                  <SelectValue placeholder="Seleccionar" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Digital">Digital</SelectItem>
+                                  <SelectItem value="Analógico">Analógico</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="text-xs">Tarifa</Label>
+                              <Select value={cfe.tariff || undefined} onValueChange={(value) => updateCfeReceipt(cfe.id, 'tariff', value)}>
+                                <SelectTrigger className="h-8">
+                                  <SelectValue placeholder="Seleccionar" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="1">1</SelectItem>
+                                  <SelectItem value="1A">1A</SelectItem>
+                                  <SelectItem value="1B">1B</SelectItem>
+                                  <SelectItem value="1C">1C</SelectItem>
+                                  <SelectItem value="1D">1D</SelectItem>
+                                  <SelectItem value="1E">1E</SelectItem>
+                                  <SelectItem value="1F">1F</SelectItem>
+                                  <SelectItem value="DAC">DAC</SelectItem>
+                                  <SelectItem value="PDBT">PDBT</SelectItem>
+                                  <SelectItem value="GDBT">GDBT</SelectItem>
+                                  <SelectItem value="GDMTH">GDMTH</SelectItem>
+                                  <SelectItem value="GDMTO">GDMTO</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="text-xs">N° Fases</Label>
+                              <Input
+                                type="number"
+                                min="1"
+                                max="3"
+                                value={cfe.phases || ''}
+                                onChange={(e) => updateCfeReceipt(cfe.id, 'phases', parseInt(e.target.value) || 0)}
+                                placeholder="2"
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">N° Hilos</Label>
+                              <Input
+                                type="number"
+                                min="1"
+                                max="4"
+                                value={cfe.wires || ''}
+                                onChange={(e) => updateCfeReceipt(cfe.id, 'wires', parseInt(e.target.value) || 0)}
+                                placeholder="3"
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Carga Instalada (kW)</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={cfe.installedLoad || ''}
+                                onChange={(e) => updateCfeReceipt(cfe.id, 'installedLoad', parseFloat(e.target.value) || 0)}
+                                placeholder="3"
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Demanda Contratada (kW)</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={cfe.contractedDemand || ''}
+                                onChange={(e) => updateCfeReceipt(cfe.id, 'contractedDemand', parseFloat(e.target.value) || 0)}
+                                placeholder="3"
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Nivel Tensión (V)</Label>
+                              <Select
+                                value={cfe.voltageLevel ? String(cfe.voltageLevel) : 'N/A'}
+                                onValueChange={(value) => {
+                                  updateCfeReceipt(cfe.id, 'voltageLevel', value === 'N/A' ? 0 : parseFloat(value))
+                                  if (value !== '13200') {
+                                    updateCfeReceipt(cfe.id, 'mediumVoltage', false)
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="h-8">
+                                  <SelectValue placeholder="Seleccionar" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="N/A">N/A</SelectItem>
+                                  <SelectItem value="110">110</SelectItem>
+                                  <SelectItem value="220">220</SelectItem>
+                                  <SelectItem value="13200">13200</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="flex items-center space-x-2 pt-5">
+                              <Checkbox
+                                id={`mediumVoltage-${cfe.id}`}
+                                checked={cfe.mediumVoltage}
+                                onCheckedChange={(checked) => {
+                                  updateCfeReceipt(cfe.id, 'mediumVoltage', checked === true)
+                                  if (checked === true) {
+                                    updateCfeReceipt(cfe.id, 'voltageLevel', 13200)
+                                  }
+                                }}
+                              />
+                              <Label htmlFor={`mediumVoltage-${cfe.id}`} className="text-xs cursor-pointer">Media Tensión</Label>
+                            </div>
+                            <div>
+                              <Label className="text-xs">Sucursal CFE</Label>
+                              <Select value={cfe.cfeBranch || 'N/A'} onValueChange={(value) => updateCfeReceipt(cfe.id, 'cfeBranch', value === 'N/A' ? '' : value)}>
+                                <SelectTrigger className="h-8">
+                                  <SelectValue placeholder="Seleccionar" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="N/A">N/A</SelectItem>
+                                  <SelectItem value="CD GUZMAN">CD GUZMAN</SelectItem>
+                                  <SelectItem value="Colima">Colima</SelectItem>
+                                  <SelectItem value="Manzanillo">Manzanillo</SelectItem>
+                                  <SelectItem value="Tecoman">Tecoman</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="text-xs">Folio CFE</Label>
+                              <Input
+                                value={cfe.cfeFolio}
+                                onChange={(e) => updateCfeReceipt(cfe.id, 'cfeFolio', e.target.value)}
+                                placeholder="Folio"
+                                className="h-8"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
-                </div>
+                </CardContent>
+              </Card>
 
-                {/* CFE Data Fields */}
-                <div className="grid gap-4 md:grid-cols-4">
-                <div>
-                  <Label htmlFor="cfeRpu">RPU</Label>
-                  <Input
-                    id="cfeRpu"
-                    value={formData.cfeRpu}
-                    onChange={(e) => handleInputChange('cfeRpu', e.target.value)}
-                    placeholder="208190705269"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="cfeMeterNumber">N° Medidor</Label>
-                  <Input
-                    id="cfeMeterNumber"
-                    value={formData.cfeMeterNumber}
-                    onChange={(e) => handleInputChange('cfeMeterNumber', e.target.value)}
-                    placeholder="25T73E"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="cfeRmu">RMU</Label>
-                  <Input
-                    id="cfeRmu"
-                    value={formData.cfeRmu}
-                    onChange={(e) => handleInputChange('cfeRmu', e.target.value)}
-                    placeholder="28610 25-06-27 FIGJ-881129 001"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="cfeAccountNumber">N° Cuenta CFE</Label>
-                  <Input
-                    id="cfeAccountNumber"
-                    value={formData.cfeAccountNumber}
-                    onChange={(e) => handleInputChange('cfeAccountNumber', e.target.value)}
-                    placeholder="19DF25E031920760"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="cfeMeterType">Tipo de Medidor</Label>
-                  <Select value={formData.cfeMeterType} onValueChange={(value) => handleInputChange('cfeMeterType', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Digital">Digital</SelectItem>
-                      <SelectItem value="Analógico">Analógico</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="cfeTariff">Tarifa</Label>
-                  <Select value={formData.cfeTariff} onValueChange={(value) => handleInputChange('cfeTariff', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">1</SelectItem>
-                      <SelectItem value="1A">1A</SelectItem>
-                      <SelectItem value="1B">1B</SelectItem>
-                      <SelectItem value="1C">1C</SelectItem>
-                      <SelectItem value="1D">1D</SelectItem>
-                      <SelectItem value="1E">1E</SelectItem>
-                      <SelectItem value="1F">1F</SelectItem>
-                      <SelectItem value="DAC">DAC</SelectItem>
-                      <SelectItem value="PDBT">PDBT</SelectItem>
-                      <SelectItem value="GDBT">GDBT</SelectItem>
-                      <SelectItem value="GDMTH">GDMTH</SelectItem>
-                      <SelectItem value="GDMTO">GDMTO</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="cfePhases">N° Fases</Label>
-                  <Input
-                    id="cfePhases"
-                    type="number"
-                    min="1"
-                    max="3"
-                    value={formData.cfePhases || ''}
-                    onChange={(e) => handleInputChange('cfePhases', parseInt(e.target.value) || 0)}
-                    placeholder="2"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="cfeWires">N° Hilos</Label>
-                  <Input
-                    id="cfeWires"
-                    type="number"
-                    min="1"
-                    max="4"
-                    value={formData.cfeWires || ''}
-                    onChange={(e) => handleInputChange('cfeWires', parseInt(e.target.value) || 0)}
-                    placeholder="3"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="cfeInstalledLoad">Carga Instalada (kW)</Label>
-                  <Input
-                    id="cfeInstalledLoad"
-                    type="number"
-                    step="0.01"
-                    value={formData.cfeInstalledLoad || ''}
-                    onChange={(e) => handleInputChange('cfeInstalledLoad', parseFloat(e.target.value) || 0)}
-                    placeholder="3"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="cfeContractedDemand">Demanda Contratada (kW)</Label>
-                  <Input
-                    id="cfeContractedDemand"
-                    type="number"
-                    step="0.01"
-                    value={formData.cfeContractedDemand || ''}
-                    onChange={(e) => handleInputChange('cfeContractedDemand', parseFloat(e.target.value) || 0)}
-                    placeholder="3"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="cfeVoltageLevel">Nivel Tensión (V)</Label>
-                  <Select
-                    value={formData.cfeVoltageLevel ? String(formData.cfeVoltageLevel) : ''}
-                    onValueChange={(value) => {
-                      handleInputChange('cfeVoltageLevel', value === 'N/A' ? 0 : parseFloat(value))
-                      if (value !== '13200') {
-                        handleInputChange('cfeMediumVoltage', false)
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="N/A">N/A</SelectItem>
-                      <SelectItem value="110">110</SelectItem>
-                      <SelectItem value="13200">13200</SelectItem>
-                      <SelectItem value="220">220</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center space-x-2 pt-6">
-                  <Checkbox
-                    id="cfeMediumVoltage"
-                    checked={formData.cfeMediumVoltage}
-                    onCheckedChange={(checked) => {
-                      handleInputChange('cfeMediumVoltage', checked === true)
-                      if (checked === true) {
-                        handleInputChange('cfeVoltageLevel', 13200)
-                      }
-                    }}
-                  />
-                  <Label htmlFor="cfeMediumVoltage" className="cursor-pointer">Media Tensión</Label>
-                </div>
-                <div>
-                  <Label htmlFor="cfeBranch">Sucursal CFE</Label>
-                  <Select value={formData.cfeBranch} onValueChange={(value) => handleInputChange('cfeBranch', value === 'N/A' ? '' : value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="N/A">N/A</SelectItem>
-                      <SelectItem value="CD GUZMAN">CD GUZMAN</SelectItem>
-                      <SelectItem value="Colima">Colima</SelectItem>
-                      <SelectItem value="Manzanillo">Manzanillo</SelectItem>
-                      <SelectItem value="Tecoman">Tecoman</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="cfeFolio">Folio CFE</Label>
-                  <Input
-                    id="cfeFolio"
-                    value={formData.cfeFolio}
-                    onChange={(e) => handleInputChange('cfeFolio', e.target.value)}
-                    placeholder="Folio del recibo"
-                  />
-                </div>
-
-                {/* Separador */}
-                <div className="md:col-span-4 border-t pt-4 mt-2">
-                  <h4 className="text-sm font-medium text-gray-700 mb-3">Datos de Contacto Anexo</h4>
+              {/* Datos de Contacto Anexo */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Datos de Contacto Anexo</CardTitle>
+                </CardHeader>
+                <CardContent>
                   <div className="grid gap-3 md:grid-cols-4 text-sm">
                     <div>
                       <span className="text-gray-500">Nombre:</span>
@@ -1196,10 +1654,9 @@ export default function EditClientPage() {
                       <p className="font-medium">{contactSettings.contact_email || '-'}</p>
                     </div>
                   </div>
-                </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* TAB: Sistema Solar */}

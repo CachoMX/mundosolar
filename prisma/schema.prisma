@@ -130,7 +130,7 @@ model Client {
   regimenFiscal String?
   identificationNumber String? // INE/IFE number
   neighborhood String?
-  
+
   // Growatt Integration fields
   growattUsername String?
   growattPassword String? // Should be encrypted in production
@@ -138,7 +138,7 @@ model Client {
 
   // Mexican Tax/Fiscal Information
   fiscalData  FiscalData?
-  
+
   // Business relationships
   orders           Order[]
   maintenanceRecords MaintenanceRecord[]
@@ -147,15 +147,43 @@ model Client {
   growattHistory   GrowattDailyHistory[]
   notifications    Notification[]
   cfeReceipts      CfeReceipt[]
+  addresses        ClientAddress[]
 
   @@map("clients")
+}
+
+// Client Addresses (multiple addresses per client)
+model ClientAddress {
+  id           String   @id @default(cuid())
+  clientId     String
+  name         String   // e.g., "Casa Principal", "Sucursal Norte"
+  address      String?
+  city         String?
+  state        String?
+  postalCode   String?
+  neighborhood String?
+  isDefault    Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  cfeReceipts  CfeReceipt[]
+  solarSystems SolarSystem[]
+  orders       Order[]
+
+  @@index([clientId])
+  @@map("client_addresses")
 }
 
 // CFE Receipt Data (Comisión Federal de Electricidad)
 model CfeReceipt {
   id                String   @id @default(cuid())
   clientId          String
+  addressId         String?  // Link to specific address
+  name              String?  // e.g., "Medidor Principal", "Medidor Bodega"
   rpu               String?  // Registro Permanente Único
+  serviceNumber     String?  // Número de servicio CFE
   meterNumber       String?  // Número de medidor
   rmu               String?  // RMU
   accountNumber     String?  // Número de cuenta CFE
@@ -174,9 +202,13 @@ model CfeReceipt {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client       Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  address      ClientAddress? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  solarSystems SolarSystem[]
+  orders       Order[]
 
-  @@unique([clientId]) // One CFE receipt per client
+  @@index([clientId])
+  @@index([addressId])
   @@map("cfe_receipts")
 }
 
@@ -347,6 +379,8 @@ model Order {
   id            String      @id @default(cuid())
   orderNumber   String      @unique
   clientId      String
+  addressId     String?     // Link to specific delivery address
+  cfeReceiptId  String?     // Link to specific meter (for installation orders)
   status        String      @default("DRAFT") // DRAFT, CONFIRMED, IN_PROGRESS, SHIPPED, DELIVERED, COMPLETED, CANCELLED
   orderType     String      @default("SALE") // SALE, INSTALLATION, MAINTENANCE, WARRANTY
   orderDate     DateTime    @default(now())
@@ -378,6 +412,8 @@ model Order {
   createdBy      String?
 
   client            Client             @relation(fields: [clientId], references: [id])
+  address           ClientAddress?     @relation(fields: [addressId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  cfeReceipt        CfeReceipt?        @relation(fields: [cfeReceiptId], references: [id], onUpdate: NoAction, onDelete: NoAction)
   createdByUser     User?              @relation(fields: [createdBy], references: [id])
   orderItems        OrderItem[]
   invoice           Invoice?
@@ -489,6 +525,8 @@ model SolarSystem {
   systemName       String
   clientId         String
   orderId          String?
+  addressId        String?  // Link to specific address
+  cfeReceiptId     String?  // Link to specific meter/CFE receipt
   installationDate DateTime?
   capacity         Decimal? @db.Decimal(8, 2) // kW
   estimatedGeneration Decimal? @db.Decimal(10, 2) // kWh/year
@@ -511,6 +549,8 @@ model SolarSystem {
 
   client             Client              @relation(fields: [clientId], references: [id], onUpdate: NoAction)
   order              Order?              @relation(fields: [orderId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  address            ClientAddress?      @relation(fields: [addressId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  cfeReceipt         CfeReceipt?         @relation(fields: [cfeReceiptId], references: [id], onUpdate: NoAction, onDelete: NoAction)
   installedBy        User?               @relation(fields: [installedById], references: [id], onUpdate: NoAction, onDelete: NoAction)
   components         SolarSystemComponent[]
   maintenanceRecords MaintenanceRecord[]

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -146,6 +147,7 @@ const INVERTER_BRANDS = [
 
 export default function NewClientPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [loading, setLoading] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(false)
   const [formData, setFormData] = useState<ClientFormData>({
@@ -335,6 +337,10 @@ export default function NewClientPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Error al crear cliente')
       }
+
+      // Invalidate cache before redirecting
+      await queryClient.invalidateQueries({ queryKey: ['clients'] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
 
       // Redirect back to clients list
       router.push('/clients')

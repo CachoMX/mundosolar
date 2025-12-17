@@ -208,6 +208,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Buscar el usuario de Prisma por email
+    const prismaUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true }
+    })
+
     const data = await request.json()
 
     // Validate required fields
@@ -283,6 +289,8 @@ export async function POST(request: NextRequest) {
       data: {
         orderNumber,
         clientId: data.clientId,
+        addressId: data.addressId || null,
+        cfeReceiptId: data.cfeReceiptId || null,
         status: orderStatus,
         orderType: data.orderType || 'SALE',
         orderDate: new Date(),
@@ -300,7 +308,7 @@ export async function POST(request: NextRequest) {
         paymentStatus,
         shippingAddress: data.shippingAddress || null,
         notes: data.notes || null,
-        createdBy: user.id,
+        createdBy: prismaUser?.id || null,
         orderItems: {
           create: orderItems
         }
@@ -332,7 +340,7 @@ export async function POST(request: NextRequest) {
           paymentDate: new Date(),
           referenceNumber: data.initialPayment.referenceNumber || null,
           notes: data.initialPayment.notes || null,
-          receivedById: user.id,
+          receivedById: prismaUser?.id || null,
         }
       })
     }

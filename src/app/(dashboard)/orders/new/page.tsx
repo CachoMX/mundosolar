@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,14 +36,28 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { ArrowLeft, Save, Plus, Trash2, Loader2, Check, ChevronsUpDown, Search, ScanBarcode, Zap, CreditCard, DollarSign } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, Loader2, Check, ChevronsUpDown, Search, ScanBarcode, Zap, CreditCard, DollarSign, MapPin } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
+interface ClientAddress {
+  id: string
+  name: string
+  address: string | null
+  city: string | null
+  state: string | null
+  postalCode: string | null
+  neighborhood: string | null
+  isDefault: boolean
+}
+
 interface CfeReceipt {
   id: string
+  name: string | null
+  addressId: string | null
   rpu: string | null
+  serviceNumber: string | null
   meterNumber: string | null
   rmu: string | null
   accountNumber: string | null
@@ -56,6 +71,10 @@ interface CfeReceipt {
   mediumVoltage: boolean
   cfeBranch: string | null
   cfeFolio: string | null
+  address?: {
+    id: string
+    name: string
+  } | null
 }
 
 interface Client {
@@ -69,6 +88,7 @@ interface Client {
   city: string | null
   state: string | null
   postalCode: string | null
+  addresses: ClientAddress[]
   cfeReceipts: CfeReceipt[]
 }
 
@@ -99,6 +119,7 @@ interface OrderItem {
 
 export default function NewOrderPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -108,6 +129,8 @@ export default function NewOrderPage() {
 
   // Form state
   const [selectedClientId, setSelectedClientId] = useState<string>('')
+  const [selectedAddressId, setSelectedAddressId] = useState<string>('')
+  const [selectedCfeReceiptId, setSelectedCfeReceiptId] = useState<string>('')
   const [orderType, setOrderType] = useState<string>('SALE')
   const [status, setStatus] = useState<string>('DRAFT')
   const [requiredDate, setRequiredDate] = useState<string>('')
@@ -285,6 +308,8 @@ export default function NewOrderPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId: selectedClientId,
+          addressId: selectedAddressId || null,
+          cfeReceiptId: selectedCfeReceiptId || null,
           orderType,
           status,
           requiredDate: requiredDate || null,
@@ -317,6 +342,8 @@ export default function NewOrderPage() {
       const result = await response.json()
 
       if (result.success) {
+        // Invalidar cache de órdenes para que se actualice la lista
+        await queryClient.invalidateQueries({ queryKey: ['orders'] })
         router.push('/orders')
       } else {
         alert(result.error || 'Error al crear la orden')
@@ -393,17 +420,20 @@ export default function NewOrderPage() {
                             onSelect={() => {
                               setSelectedClientId(client.id)
                               setClientOpen(false)
-                              // Auto-fill shipping address if client has one and shipping is empty
-                              if ((client.address || client.city || client.state) && !shippingAddress) {
+                              // Auto-fill shipping address from default address in client_addresses
+                              const defaultAddr = client.addresses?.find(a => a.isDefault) || client.addresses?.[0]
+                              if (defaultAddr && !shippingAddress) {
                                 const addressParts = [
-                                  client.address,
-                                  client.neighborhood && `Col. ${client.neighborhood}`,
-                                  client.city,
-                                  client.state,
-                                  client.postalCode && `C.P. ${client.postalCode}`,
+                                  defaultAddr.address,
+                                  defaultAddr.neighborhood && `Col. ${defaultAddr.neighborhood}`,
+                                  defaultAddr.city,
+                                  defaultAddr.state,
+                                  defaultAddr.postalCode && `C.P. ${defaultAddr.postalCode}`,
                                   'México'
                                 ].filter(Boolean)
                                 setShippingAddress(addressParts.join(', '))
+                                // Auto-select the default address
+                                setSelectedAddressId(defaultAddr.id)
                               }
                             }}
                           >
@@ -426,91 +456,133 @@ export default function NewOrderPage() {
               </Popover>
 
               {selectedClient && (
-                <div className="bg-muted p-3 rounded-lg text-sm space-y-2">
+                <div className="bg-muted p-3 rounded-lg text-sm space-y-3">
                   <p><strong>Email:</strong> {selectedClient.email}</p>
                   {selectedClient.phone && <p><strong>Teléfono:</strong> {selectedClient.phone}</p>}
 
-                  {/* Client Address Section */}
-                  {(selectedClient.address || selectedClient.city || selectedClient.state) && (
+                  {/* Address Selection Section */}
+                  {selectedClient.addresses && selectedClient.addresses.length > 0 && (
                     <div className="pt-2 border-t border-border mt-2">
-                      <div className="flex items-center justify-between mb-2">
-                        <strong>Dirección del Cliente:</strong>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
+                      <div className="flex items-center gap-2 mb-2">
+                        <MapPin className="h-4 w-4 text-blue-600" />
+                        <strong>Dirección de Entrega:</strong>
+                      </div>
+                      <Select
+                        value={selectedAddressId || undefined}
+                        onValueChange={(value) => {
+                          setSelectedAddressId(value)
+                          // Auto-fill shipping address based on selection
+                          const addr = selectedClient.addresses?.find(a => a.id === value)
+                          if (addr) {
                             const addressParts = [
-                              selectedClient.address,
-                              selectedClient.neighborhood && `Col. ${selectedClient.neighborhood}`,
-                              selectedClient.city,
-                              selectedClient.state,
-                              selectedClient.postalCode && `C.P. ${selectedClient.postalCode}`,
+                              addr.address,
+                              addr.neighborhood && `Col. ${addr.neighborhood}`,
+                              addr.city,
+                              addr.state,
+                              addr.postalCode && `C.P. ${addr.postalCode}`,
                               'México'
                             ].filter(Boolean)
                             setShippingAddress(addressParts.join(', '))
-                          }}
-                        >
-                          Usar esta dirección
-                        </Button>
-                      </div>
-                      <div className="text-muted-foreground space-y-1">
-                        {selectedClient.address && <p>{selectedClient.address}</p>}
-                        {selectedClient.neighborhood && <p>Col. {selectedClient.neighborhood}</p>}
-                        <p>
-                          {[selectedClient.city, selectedClient.state].filter(Boolean).join(', ')}
-                          {selectedClient.postalCode && ` - C.P. ${selectedClient.postalCode}`}
-                        </p>
-                        <p>México</p>
-                      </div>
+                          }
+                          // Reset CFE receipt selection when address changes
+                          setSelectedCfeReceiptId('')
+                        }}
+                      >
+                        <SelectTrigger className="bg-white dark:bg-gray-900">
+                          <SelectValue placeholder="Seleccionar dirección..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {selectedClient.addresses?.map((addr) => (
+                            <SelectItem key={addr.id} value={addr.id}>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{addr.name || addr.city || 'Sin nombre'}</span>
+                                {addr.isDefault && <span className="text-xs text-muted-foreground">(Principal)</span>}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {/* Show selected address details */}
+                      {selectedAddressId && (() => {
+                        const addr = selectedClient.addresses?.find(a => a.id === selectedAddressId)
+                        return addr && (
+                          <div className="mt-2 text-muted-foreground text-xs space-y-0.5">
+                            {addr.address && <p>{addr.address}</p>}
+                            {addr.neighborhood && <p>Col. {addr.neighborhood}</p>}
+                            <p>
+                              {[addr.city, addr.state].filter(Boolean).join(', ')}
+                              {addr.postalCode && ` - C.P. ${addr.postalCode}`}
+                            </p>
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
 
-                  {/* CFE Data Section */}
+                  {/* CFE Meter Selection Section */}
                   {selectedClient.cfeReceipts && selectedClient.cfeReceipts.length > 0 && (
                     <div className="pt-2 border-t border-border mt-2">
                       <div className="flex items-center gap-2 mb-2">
                         <Zap className="h-4 w-4 text-yellow-600" />
-                        <strong>Datos CFE:</strong>
+                        <strong>Medidor CFE:</strong>
                       </div>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
-                        {selectedClient.cfeReceipts[0].rpu && (
-                          <p><span className="font-medium text-foreground">RPU:</span> {selectedClient.cfeReceipts[0].rpu}</p>
-                        )}
-                        {selectedClient.cfeReceipts[0].accountNumber && (
-                          <p><span className="font-medium text-foreground">No. Cuenta:</span> {selectedClient.cfeReceipts[0].accountNumber}</p>
-                        )}
-                        {selectedClient.cfeReceipts[0].meterNumber && (
-                          <p><span className="font-medium text-foreground">No. Medidor:</span> {selectedClient.cfeReceipts[0].meterNumber}</p>
-                        )}
-                        {selectedClient.cfeReceipts[0].tariff && (
-                          <p><span className="font-medium text-foreground">Tarifa:</span> {selectedClient.cfeReceipts[0].tariff}</p>
-                        )}
-                        {selectedClient.cfeReceipts[0].meterType && (
-                          <p><span className="font-medium text-foreground">Tipo Medidor:</span> {selectedClient.cfeReceipts[0].meterType}</p>
-                        )}
-                        {selectedClient.cfeReceipts[0].phases && (
-                          <p><span className="font-medium text-foreground">Fases:</span> {selectedClient.cfeReceipts[0].phases}</p>
-                        )}
-                        {selectedClient.cfeReceipts[0].wires && (
-                          <p><span className="font-medium text-foreground">Hilos:</span> {selectedClient.cfeReceipts[0].wires}</p>
-                        )}
-                        {selectedClient.cfeReceipts[0].installedLoad && (
-                          <p><span className="font-medium text-foreground">Carga Instalada:</span> {selectedClient.cfeReceipts[0].installedLoad} kW</p>
-                        )}
-                        {selectedClient.cfeReceipts[0].contractedDemand && (
-                          <p><span className="font-medium text-foreground">Demanda Contratada:</span> {selectedClient.cfeReceipts[0].contractedDemand} kW</p>
-                        )}
-                        {selectedClient.cfeReceipts[0].voltageLevel && (
-                          <p><span className="font-medium text-foreground">Tensión:</span> {selectedClient.cfeReceipts[0].voltageLevel} V</p>
-                        )}
-                        {selectedClient.cfeReceipts[0].cfeBranch && (
-                          <p><span className="font-medium text-foreground">Sucursal:</span> {selectedClient.cfeReceipts[0].cfeBranch}</p>
-                        )}
-                        {selectedClient.cfeReceipts[0].mediumVoltage && (
-                          <p><span className="font-medium text-foreground">Media Tensión:</span> Sí</p>
-                        )}
-                      </div>
+                      {selectedClient.cfeReceipts.length === 1 ? (
+                        // Single meter - show directly
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
+                          {selectedClient.cfeReceipts[0].name && (
+                            <p className="col-span-2 font-medium text-foreground mb-1">{selectedClient.cfeReceipts[0].name}</p>
+                          )}
+                          {selectedClient.cfeReceipts[0].rpu && (
+                            <p><span className="font-medium text-foreground">RPU:</span> {selectedClient.cfeReceipts[0].rpu}</p>
+                          )}
+                          {selectedClient.cfeReceipts[0].serviceNumber && (
+                            <p><span className="font-medium text-foreground">N° Servicio:</span> {selectedClient.cfeReceipts[0].serviceNumber}</p>
+                          )}
+                          {selectedClient.cfeReceipts[0].meterNumber && (
+                            <p><span className="font-medium text-foreground">N° Medidor:</span> {selectedClient.cfeReceipts[0].meterNumber}</p>
+                          )}
+                          {selectedClient.cfeReceipts[0].tariff && (
+                            <p><span className="font-medium text-foreground">Tarifa:</span> {selectedClient.cfeReceipts[0].tariff}</p>
+                          )}
+                        </div>
+                      ) : (
+                        // Multiple meters - show selector
+                        <>
+                          <Select
+                            value={selectedCfeReceiptId}
+                            onValueChange={setSelectedCfeReceiptId}
+                          >
+                            <SelectTrigger className="bg-white dark:bg-gray-900">
+                              <SelectValue placeholder="Seleccionar medidor..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {selectedClient.cfeReceipts
+                                .filter(cfe => !selectedAddressId || !cfe.addressId || cfe.addressId === selectedAddressId)
+                                .map((cfe) => (
+                                  <SelectItem key={cfe.id} value={cfe.id}>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium">{cfe.name || `Medidor ${cfe.meterNumber || cfe.rpu || cfe.id.slice(-4)}`}</span>
+                                      {cfe.address && <span className="text-xs text-muted-foreground">({cfe.address.name})</span>}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          {selectedCfeReceiptId && (() => {
+                            const cfe = selectedClient.cfeReceipts.find(c => c.id === selectedCfeReceiptId)
+                            return cfe && (
+                              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground text-xs">
+                                {cfe.rpu && <p><span className="font-medium text-foreground">RPU:</span> {cfe.rpu}</p>}
+                                {cfe.serviceNumber && <p><span className="font-medium text-foreground">N° Servicio:</span> {cfe.serviceNumber}</p>}
+                                {cfe.meterNumber && <p><span className="font-medium text-foreground">N° Medidor:</span> {cfe.meterNumber}</p>}
+                                {cfe.tariff && <p><span className="font-medium text-foreground">Tarifa:</span> {cfe.tariff}</p>}
+                                {cfe.phases && <p><span className="font-medium text-foreground">Fases:</span> {cfe.phases}</p>}
+                                {cfe.installedLoad && <p><span className="font-medium text-foreground">Carga:</span> {cfe.installedLoad} kW</p>}
+                              </div>
+                            )
+                          })()}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

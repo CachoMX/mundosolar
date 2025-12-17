@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -108,16 +109,46 @@ interface Technician {
   email: string
 }
 
+// Fetch functions for React Query
+const fetchMaintenance = async (id: string): Promise<MaintenanceDetail> => {
+  const response = await fetch(`/api/maintenance/${id}`)
+  const data = await response.json()
+  if (!data.success) {
+    throw new Error(data.error || 'Mantenimiento no encontrado')
+  }
+  return data.data
+}
+
+const fetchTechnicians = async (): Promise<Technician[]> => {
+  const response = await fetch('/api/technicians')
+  const data = await response.json()
+  if (data.success) {
+    return data.data
+  }
+  return []
+}
+
 export default function MaintenanceDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const [maintenance, setMaintenance] = useState<MaintenanceDetail | null>(null)
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [showEditModal, setShowEditModal] = useState(false)
+
+  // React Query for maintenance detail
+  const { data: maintenance, isLoading: loading, error } = useQuery({
+    queryKey: ['maintenance', params.id],
+    queryFn: () => fetchMaintenance(params.id as string),
+    enabled: !!params.id,
+  })
+
+  // React Query for technicians
+  const { data: technicians = [] } = useQuery({
+    queryKey: ['technicians'],
+    queryFn: fetchTechnicians,
+  })
 
   // Approval modal state
   const [showApprovalModal, setShowApprovalModal] = useState(false)
-  const [technicians, setTechnicians] = useState<Technician[]>([])
   const [approving, setApproving] = useState(false)
   const [approvalData, setApprovalData] = useState({
     scheduledDate: '',
@@ -131,42 +162,20 @@ export default function MaintenanceDetailPage() {
   const [rejecting, setRejecting] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
 
+  // Handle error - redirect if maintenance not found
   useEffect(() => {
-    if (params.id) {
-      loadMaintenance()
+    if (error) {
+      alert('Mantenimiento no encontrado')
+      router.push('/maintenance')
     }
-    loadTechnicians()
-  }, [params.id])
+  }, [error, router])
 
-  const loadTechnicians = async () => {
-    try {
-      const response = await fetch('/api/technicians')
-      const data = await response.json()
-      if (data.success) {
-        setTechnicians(data.data)
-      }
-    } catch (error) {
-      console.error('Error loading technicians:', error)
-    }
-  }
-
-  const loadMaintenance = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch(`/api/maintenance/${params.id}`)
-      const data = await response.json()
-
-      if (data.success) {
-        setMaintenance(data.data)
-      } else {
-        alert('Mantenimiento no encontrado')
-        router.push('/maintenance')
-      }
-    } catch (error) {
-      console.error('Error loading maintenance:', error)
-    } finally {
-      setLoading(false)
-    }
+  // Invalidate all related caches
+  const invalidateCaches = () => {
+    queryClient.invalidateQueries({ queryKey: ['maintenance', params.id] })
+    queryClient.invalidateQueries({ queryKey: ['maintenance-metrics'] })
+    queryClient.invalidateQueries({ queryKey: ['maintenance-events'] })
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
   }
 
   const updateStatus = async (newStatus: string) => {
@@ -184,7 +193,7 @@ export default function MaintenanceDetailPage() {
       const data = await response.json()
 
       if (data.success) {
-        loadMaintenance()
+        invalidateCaches()
       } else {
         alert(data.error || 'Error al actualizar estado')
       }
@@ -206,6 +215,10 @@ export default function MaintenanceDetailPage() {
       const data = await response.json()
 
       if (data.success) {
+        // Invalidate caches before navigating
+        queryClient.invalidateQueries({ queryKey: ['maintenance-metrics'] })
+        queryClient.invalidateQueries({ queryKey: ['maintenance-events'] })
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
         router.push('/maintenance')
       } else {
         alert(data.error || 'Error al cancelar mantenimiento')
@@ -258,7 +271,7 @@ export default function MaintenanceDetailPage() {
 
       if (data.success) {
         setShowApprovalModal(false)
-        loadMaintenance()
+        invalidateCaches()
       } else {
         alert(data.error || 'Error al aprobar solicitud')
       }
@@ -293,7 +306,7 @@ export default function MaintenanceDetailPage() {
       if (data.success) {
         setShowRejectModal(false)
         setRejectReason('')
-        loadMaintenance()
+        invalidateCaches()
       } else {
         alert(data.error || 'Error al rechazar solicitud')
       }
@@ -701,7 +714,7 @@ export default function MaintenanceDetailPage() {
         open={showEditModal}
         onClose={() => setShowEditModal(false)}
         onSuccess={() => {
-          loadMaintenance()
+          invalidateCaches()
           setShowEditModal(false)
         }}
         editData={maintenance}

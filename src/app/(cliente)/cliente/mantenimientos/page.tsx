@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -120,13 +121,18 @@ const fetchMaintenanceData = async (): Promise<MaintenanceData> => {
 
 export default function MantenimientosPage() {
   const searchParams = useSearchParams()
+  const queryClient = useQueryClient()
   const [view, setView] = useState<'calendar' | 'table'>('calendar')
   const [dismissedRejections, setDismissedRejections] = useState<string[]>([])
 
-  // Data state
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
-  const [events, setEvents] = useState<CalendarEvent[]>([])
-  const [loading, setLoading] = useState(true)
+  // React Query for maintenance data
+  const { data, isLoading: loading, refetch } = useQuery({
+    queryKey: ['cliente-mantenimientos'],
+    queryFn: fetchMaintenanceData,
+  })
+
+  const metrics = data?.metrics || null
+  const events = data?.events || []
 
   // Modal state
   const [showRequestModal, setShowRequestModal] = useState(false)
@@ -155,22 +161,10 @@ export default function MantenimientosPage() {
     preferredPeriod: 'AM' as 'AM' | 'PM'
   })
 
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true)
-      const data = await fetchMaintenanceData()
-      setMetrics(data.metrics)
-      setEvents(data.events)
-    } catch (error) {
-      console.error('Error loading maintenance data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadData()
-  }, [loadData])
+  // Helper function to invalidate caches
+  const invalidateCaches = () => {
+    queryClient.invalidateQueries({ queryKey: ['cliente-mantenimientos'] })
+  }
 
   useEffect(() => {
     // Load dismissed rejections from localStorage
@@ -267,7 +261,7 @@ export default function MantenimientosPage() {
         localStorage.setItem('dismissedRejections', JSON.stringify(newDismissed))
         setShowRejectionModal(false)
         setSelectedRejectedEvent(null)
-        loadData()
+        invalidateCaches()
       } else {
         alert(result.error || 'Error al eliminar')
       }
@@ -336,10 +330,10 @@ export default function MantenimientosPage() {
 
       if (data.success) {
         setRequestMessage({ type: 'success', text: 'Solicitud de mantenimiento enviada correctamente. Un administrador la revisará pronto.' })
-        // Reload data after successful request
+        // Invalidate cache and close modal after successful request
         setTimeout(() => {
           setShowRequestModal(false)
-          loadData()
+          invalidateCaches()
         }, 2000)
       } else {
         setRequestMessage({ type: 'error', text: data.error || 'Error al enviar solicitud' })

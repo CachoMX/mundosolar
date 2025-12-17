@@ -35,7 +35,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <Providers>
           {children}
-          <Toaster />
+          <Toaster position="top-right" richColors />
         </Providers>
         <script dangerouslySetInnerHTML={{
           __html: `

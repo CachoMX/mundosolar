@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Zap, Sun, Battery, TrendingUp, Loader2, RefreshCw, AlertCircle, Users, User, Settings, LineChart, Clock } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Plus, Zap, Sun, Battery, TrendingUp, Loader2, RefreshCw, AlertCircle, Users, User, Settings, LineChart, Clock, Search, X } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ClientHistoryModal } from '@/components/client-history-modal'
 
@@ -86,6 +87,7 @@ export default function SolarSystemsPage() {
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState("todos-sistemas")
+  const [searchTerm, setSearchTerm] = useState('')
 
   // History modal state
   const [historyModalOpen, setHistoryModalOpen] = useState(false)
@@ -326,6 +328,26 @@ export default function SolarSystemsPage() {
     })
   }
 
+  // Filter client systems based on search term
+  const filteredClientSystems = useMemo(() => {
+    if (!searchTerm.trim()) return clientSystems
+
+    const search = searchTerm.toLowerCase().trim()
+    return clientSystems.filter(client => {
+      const fullName = `${client.clientInfo.firstName} ${client.clientInfo.lastName}`.toLowerCase()
+      const email = client.clientInfo.email?.toLowerCase() || ''
+      const city = client.clientInfo.city?.toLowerCase() || ''
+      const state = client.clientInfo.state?.toLowerCase() || ''
+      const plantNames = client.growattData?.plants?.map(p => p.plantName.toLowerCase()).join(' ') || ''
+
+      return fullName.includes(search) ||
+             email.includes(search) ||
+             city.includes(search) ||
+             state.includes(search) ||
+             plantNames.includes(search)
+    })
+  }, [clientSystems, searchTerm])
+
   return (
     <div className="flex-1 space-y-4 p-4 pt-6">
       <div className="flex items-center justify-between">
@@ -358,6 +380,36 @@ export default function SolarSystemsPage() {
           </Button>
         </div>
       </div>
+
+      {/* Search Bar */}
+      {activeTab === 'todos-sistemas' && (
+        <div className="flex items-center gap-4">
+          <div className="relative max-w-md flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nombre, email, ciudad, planta..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-10"
+            />
+            {searchTerm && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                onClick={() => setSearchTerm('')}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          {searchTerm && (
+            <span className="text-sm text-muted-foreground">
+              {filteredClientSystems.length} de {clientSystems.length} clientes
+            </span>
+          )}
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
@@ -655,7 +707,7 @@ export default function SolarSystemsPage() {
             </Card>
           ) : (
             <div className="grid gap-4">
-              {clientSystems
+              {filteredClientSystems
                 .map(clientData => ({
                   ...clientData,
                   alert: getAlertLevel(
@@ -817,15 +869,30 @@ export default function SolarSystemsPage() {
                 </Card>
               ))}
 
-              {clientSystems.length === 0 && !clientsLoading && (
+              {filteredClientSystems.length === 0 && !clientsLoading && (
                 <Card>
                   <CardContent className="flex items-center justify-center h-64">
                     <div className="text-center">
-                      <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">No hay clientes con Growatt configurado</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Agregue credenciales de Growatt a los clientes para ver sus sistemas solares aquí.
-                      </p>
+                      {searchTerm ? (
+                        <>
+                          <Search className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                          <h3 className="text-lg font-semibold mb-2">No se encontraron resultados</h3>
+                          <p className="text-sm text-muted-foreground">
+                            No hay sistemas que coincidan con "{searchTerm}"
+                          </p>
+                          <Button variant="outline" className="mt-4" onClick={() => setSearchTerm('')}>
+                            Limpiar búsqueda
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                          <h3 className="text-lg font-semibold mb-2">No hay clientes con Growatt configurado</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Agregue credenciales de Growatt a los clientes para ver sus sistemas solares aquí.
+                          </p>
+                        </>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

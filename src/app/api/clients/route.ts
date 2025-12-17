@@ -17,7 +17,20 @@ export async function GET(request: NextRequest) {
     const clients = await withRetry(() => prisma.client.findMany({
       include: {
         solarSystems: true,
-        cfeReceipts: true
+        addresses: {
+          where: { isActive: true },
+          orderBy: { isDefault: 'desc' }
+        },
+        cfeReceipts: {
+          include: {
+            address: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        }
       },
       orderBy: {
         createdAt: 'desc'
@@ -49,13 +62,14 @@ export async function POST(request: NextRequest) {
 
     const data = await request.json()
 
-    // Create client in database
+    // Create client in database (address now goes to client_addresses table)
     const client = await withRetry(() => prisma.client.create({
       data: {
         firstName: data.type === 'business' ? data.businessName : data.firstName,
         lastName: data.type === 'business' ? '' : (data.lastName || ''),
         email: data.email,
         phone: data.phone || null,
+        // Keep address in clients table for backwards compatibility, but also create in client_addresses
         address: data.address || null,
         neighborhood: data.neighborhood || null,
         city: data.city || null,
@@ -73,6 +87,27 @@ export async function POST(request: NextRequest) {
       }
     }))
 
+    // Create address in client_addresses table if address data is provided
+    let addressId: string | null = null
+    const hasAddressData = data.address || data.city || data.neighborhood || data.state || data.postalCode
+
+    if (hasAddressData) {
+      const address = await withRetry(() => prisma.clientAddress.create({
+        data: {
+          clientId: client.id,
+          name: data.city || 'Principal',
+          address: data.address || null,
+          neighborhood: data.neighborhood || null,
+          city: data.city || null,
+          state: data.state || null,
+          postalCode: data.postalCode || null,
+          isDefault: true,
+          isActive: true
+        }
+      }))
+      addressId = address.id
+    }
+
     // Handle CFE receipt data if provided
     const hasCfeData = data.cfeRpu || data.cfeMeterNumber || data.cfeRmu || data.cfeAccountNumber ||
                        data.cfeMeterType || data.cfeTariff || data.cfePhases || data.cfeWires ||
@@ -83,6 +118,8 @@ export async function POST(request: NextRequest) {
       await withRetry(() => prisma.cfeReceipt.create({
         data: {
           clientId: client.id,
+          addressId: addressId, // Link to the address in client_addresses
+          name: data.city ? `Medidor - ${data.city}` : 'Medidor Principal',
           rpu: data.cfeRpu || null,
           meterNumber: data.cfeMeterNumber || null,
           rmu: data.cfeRmu || null,
