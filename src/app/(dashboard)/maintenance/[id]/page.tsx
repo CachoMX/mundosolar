@@ -1,14 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -20,13 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   ArrowLeft,
   Calendar,
@@ -40,6 +32,7 @@ import {
   Loader2,
   AlertCircle,
   MapPin,
+  Phone,
 } from 'lucide-react'
 import { MaintenanceFormModal } from '@/components/maintenance-form-modal'
 
@@ -75,10 +68,12 @@ interface MaintenanceDetail {
   technicians: Array<{
     id: string
     role: string
+    technicianId: string
     technician: {
       id: string
       name: string
       email: string
+      phone: string | null
       image: string | null
     }
   }>
@@ -109,43 +104,14 @@ interface Technician {
   email: string
 }
 
-// Fetch functions for React Query
-const fetchMaintenance = async (id: string): Promise<MaintenanceDetail> => {
-  const response = await fetch(`/api/maintenance/${id}`)
-  const data = await response.json()
-  if (!data.success) {
-    throw new Error(data.error || 'Mantenimiento no encontrado')
-  }
-  return data.data
-}
-
-const fetchTechnicians = async (): Promise<Technician[]> => {
-  const response = await fetch('/api/technicians')
-  const data = await response.json()
-  if (data.success) {
-    return data.data
-  }
-  return []
-}
-
 export default function MaintenanceDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const queryClient = useQueryClient()
   const [showEditModal, setShowEditModal] = useState(false)
-
-  // React Query for maintenance detail
-  const { data: maintenance, isLoading: loading, error } = useQuery({
-    queryKey: ['maintenance', params.id],
-    queryFn: () => fetchMaintenance(params.id as string),
-    enabled: !!params.id,
-  })
-
-  // React Query for technicians
-  const { data: technicians = [] } = useQuery({
-    queryKey: ['technicians'],
-    queryFn: fetchTechnicians,
-  })
+  const [maintenance, setMaintenance] = useState<MaintenanceDetail | null>(null)
+  const [technicians, setTechnicians] = useState<Technician[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Approval modal state
   const [showApprovalModal, setShowApprovalModal] = useState(false)
@@ -153,7 +119,7 @@ export default function MaintenanceDetailPage() {
   const [approvalData, setApprovalData] = useState({
     scheduledDate: '',
     scheduledTime: '09:00',
-    technicianId: '',
+    technicianIds: [] as string[],
     notes: ''
   })
 
@@ -162,6 +128,38 @@ export default function MaintenanceDetailPage() {
   const [rejecting, setRejecting] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
 
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Fetch maintenance detail
+      const maintenanceResponse = await fetch(`/api/maintenance/${params.id}`)
+      const maintenanceResult = await maintenanceResponse.json()
+      if (!maintenanceResult.success) {
+        throw new Error(maintenanceResult.error || 'Mantenimiento no encontrado')
+      }
+      setMaintenance(maintenanceResult.data)
+
+      // Fetch technicians
+      const techResponse = await fetch('/api/technicians')
+      const techResult = await techResponse.json()
+      if (techResult.success) {
+        setTechnicians(techResult.data)
+      }
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [params.id])
+
+  useEffect(() => {
+    if (params.id) {
+      fetchData()
+    }
+  }, [params.id, fetchData])
+
   // Handle error - redirect if maintenance not found
   useEffect(() => {
     if (error) {
@@ -169,14 +167,6 @@ export default function MaintenanceDetailPage() {
       router.push('/maintenance')
     }
   }, [error, router])
-
-  // Invalidate all related caches
-  const invalidateCaches = () => {
-    queryClient.invalidateQueries({ queryKey: ['maintenance', params.id] })
-    queryClient.invalidateQueries({ queryKey: ['maintenance-metrics'] })
-    queryClient.invalidateQueries({ queryKey: ['maintenance-events'] })
-    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
-  }
 
   const updateStatus = async (newStatus: string) => {
     if (!confirm(`¿Cambiar estado a ${getStatusLabel(newStatus)}?`)) {
@@ -193,7 +183,7 @@ export default function MaintenanceDetailPage() {
       const data = await response.json()
 
       if (data.success) {
-        invalidateCaches()
+        fetchData()
       } else {
         alert(data.error || 'Error al actualizar estado')
       }
@@ -215,10 +205,6 @@ export default function MaintenanceDetailPage() {
       const data = await response.json()
 
       if (data.success) {
-        // Invalidate caches before navigating
-        queryClient.invalidateQueries({ queryKey: ['maintenance-metrics'] })
-        queryClient.invalidateQueries({ queryKey: ['maintenance-events'] })
-        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
         router.push('/maintenance')
       } else {
         alert(data.error || 'Error al cancelar mantenimiento')
@@ -237,7 +223,7 @@ export default function MaintenanceDetailPage() {
     setApprovalData({
       scheduledDate: preferredDate,
       scheduledTime: '09:00',
-      technicianId: '',
+      technicianIds: [],
       notes: ''
     })
     setShowApprovalModal(true)
@@ -252,8 +238,6 @@ export default function MaintenanceDetailPage() {
     setApproving(true)
 
     try {
-      // Create date string with explicit timezone to avoid UTC conversion issues
-      // We send the date as-is without timezone conversion so it displays correctly
       const scheduledDateTimeStr = `${approvalData.scheduledDate}T${approvalData.scheduledTime}:00.000Z`
 
       const response = await fetch(`/api/maintenance/${params.id}/status`, {
@@ -262,7 +246,7 @@ export default function MaintenanceDetailPage() {
         body: JSON.stringify({
           status: 'SCHEDULED',
           scheduledDate: scheduledDateTimeStr,
-          technicianIds: approvalData.technicianId ? [approvalData.technicianId] : [],
+          technicianIds: approvalData.technicianIds,
           notes: approvalData.notes || 'Solicitud aprobada'
         }),
       })
@@ -271,7 +255,7 @@ export default function MaintenanceDetailPage() {
 
       if (data.success) {
         setShowApprovalModal(false)
-        invalidateCaches()
+        fetchData()
       } else {
         alert(data.error || 'Error al aprobar solicitud')
       }
@@ -306,7 +290,7 @@ export default function MaintenanceDetailPage() {
       if (data.success) {
         setShowRejectModal(false)
         setRejectReason('')
-        invalidateCaches()
+        fetchData()
       } else {
         alert(data.error || 'Error al rechazar solicitud')
       }
@@ -378,7 +362,6 @@ export default function MaintenanceDetailPage() {
   const getNextStatusAction = () => {
     if (!maintenance) return null
 
-    // For PENDING_APPROVAL, show both approve and reject buttons
     if (maintenance.status === 'PENDING_APPROVAL') {
       return (
         <>
@@ -458,7 +441,6 @@ export default function MaintenanceDetailPage() {
         </div>
         <div className="flex gap-2">
           {getNextStatusAction()}
-          {/* Only show Edit and Cancel buttons when NOT in PENDING_APPROVAL status */}
           {maintenance.status !== 'PENDING_APPROVAL' && (
             <>
               <Button variant="outline" onClick={() => setShowEditModal(true)}>
@@ -542,7 +524,6 @@ export default function MaintenanceDetailPage() {
             <CardTitle className="text-sm font-medium">Cliente</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Client Name & Contact */}
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-primary" />
@@ -556,7 +537,6 @@ export default function MaintenanceDetailPage() {
               )}
             </div>
 
-            {/* Client Address */}
             {(maintenance.client.address || maintenance.client.city) && (
               <div className="space-y-1.5 pt-4 border-t">
                 <div className="flex items-center gap-2">
@@ -619,6 +599,12 @@ export default function MaintenanceDetailPage() {
                   <div className="flex-1">
                     <p className="font-medium">{tech.technician?.name || 'Sin nombre'}</p>
                     <p className="text-sm text-muted-foreground">{tech.technician?.email || ''}</p>
+                    {tech.technician?.phone && (
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                        <Phone className="h-3 w-3" />
+                        <span>{tech.technician.phone}</span>
+                      </div>
+                    )}
                     {tech.role && (
                       <Badge variant="outline" className="mt-1">
                         {getRoleLabel(tech.role)}
@@ -714,7 +700,7 @@ export default function MaintenanceDetailPage() {
         open={showEditModal}
         onClose={() => setShowEditModal(false)}
         onSuccess={() => {
-          invalidateCaches()
+          fetchData()
           setShowEditModal(false)
         }}
         editData={maintenance}
@@ -731,7 +717,6 @@ export default function MaintenanceDetailPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {/* Request Info */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h4 className="font-medium text-blue-900">{maintenance?.title}</h4>
               <p className="text-sm text-blue-700 mt-1">
@@ -767,23 +752,47 @@ export default function MaintenanceDetailPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="technicianId">Técnico Asignado</Label>
-              <Select
-                value={approvalData.technicianId || "none"}
-                onValueChange={(value) => setApprovalData({ ...approvalData, technicianId: value === "none" ? "" : value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un técnico (opcional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin asignar por ahora</SelectItem>
+              <Label>Técnicos Asignados</Label>
+              {technicians.length === 0 ? (
+                <div className="text-center py-4 text-muted-foreground border rounded-lg">
+                  <p className="text-sm">No hay técnicos registrados.</p>
+                </div>
+              ) : (
+                <div className="border rounded-lg p-3 space-y-2 max-h-40 overflow-y-auto">
                   {technicians.map((tech) => (
-                    <SelectItem key={tech.id} value={tech.id}>
-                      {tech.name}
-                    </SelectItem>
+                    <div key={tech.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`approval-tech-${tech.id}`}
+                        checked={approvalData.technicianIds.includes(tech.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setApprovalData({
+                              ...approvalData,
+                              technicianIds: [...approvalData.technicianIds, tech.id]
+                            })
+                          } else {
+                            setApprovalData({
+                              ...approvalData,
+                              technicianIds: approvalData.technicianIds.filter(id => id !== tech.id)
+                            })
+                          }
+                        }}
+                      />
+                      <label
+                        htmlFor={`approval-tech-${tech.id}`}
+                        className="text-sm font-medium leading-none cursor-pointer"
+                      >
+                        {tech.name}
+                      </label>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
+                </div>
+              )}
+              {approvalData.technicianIds.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {approvalData.technicianIds.length} técnico(s) seleccionado(s)
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -839,7 +848,6 @@ export default function MaintenanceDetailPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {/* Request Info */}
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <h4 className="font-medium text-red-900">{maintenance?.title}</h4>
               <p className="text-sm text-red-700 mt-1">

@@ -91,6 +91,7 @@ export async function GET(
           paymentDate: p.paymentDate,
           referenceNumber: p.referenceNumber,
           notes: p.notes,
+          receiptUrl: p.receiptUrl,
           receivedBy: p.receivedBy,
           createdAt: p.createdAt
         }))
@@ -151,7 +152,8 @@ export async function POST(
       paymentMethod,
       paymentDate,
       referenceNumber,
-      notes
+      notes,
+      receiptUrl
     } = body
 
     if (!amount || amount <= 0) {
@@ -203,6 +205,7 @@ export async function POST(
           paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
           referenceNumber,
           notes,
+          receiptUrl,
           receivedById: user.id
         },
         include: {
@@ -240,6 +243,7 @@ export async function POST(
           paymentDate: result.paymentDate,
           referenceNumber: result.referenceNumber,
           notes: result.notes,
+          receiptUrl: result.receiptUrl,
           receivedBy: result.receivedBy,
           createdAt: result.createdAt
         },

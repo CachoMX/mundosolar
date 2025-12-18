@@ -129,10 +129,10 @@ export async function GET(request: NextRequest) {
               select: {
                 id: true,
                 name: true,
+                phone: true,
               }
             }
-          },
-          take: 2
+          }
         }
       },
       orderBy: {
@@ -177,7 +177,7 @@ export async function GET(request: NextRequest) {
         upcoming: upcoming.map(item => ({
           ...item,
           technicians: item.technicians.map(t => ({
-            technician: { name: t.technician.name }
+            technician: { name: t.technician.name, phone: t.technician.phone }
           }))
         })),
         overdueList

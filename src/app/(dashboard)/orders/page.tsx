@@ -526,7 +526,7 @@ export default function OrdersPage() {
                                 Completar
                               </DropdownMenuItem>
                             )}
-                            {order.status === 'DRAFT' && (
+                            {(order.status === 'DRAFT' || order.status === 'CANCELLED') && (
                               <DropdownMenuItem
                                 className="text-red-600"
                                 onClick={() => {

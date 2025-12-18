@@ -8,9 +8,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Plus, Package, AlertTriangle, TrendingUp, Loader2, RefreshCw, ScanBarcode, Minus, CheckCircle, Search } from 'lucide-react'
+import { Plus, Package, AlertTriangle, TrendingUp, Loader2, RefreshCw, ScanBarcode, Minus, CheckCircle, Search, Upload, FileText, X, Eye, ArrowUpCircle } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import BarcodeDisplay from 'react-barcode'
+import Image from 'next/image'
 
 interface InventoryData {
   summary: {
@@ -37,17 +38,6 @@ interface InventoryData {
   }[]
 }
 
-interface ProductFormData {
-  name: string
-  brand: string
-  model: string
-  capacity: string
-  description: string
-  barcode: string
-  unitPrice: string
-  categoryId: string
-}
-
 interface ExitFormData {
   barcode: string
   quantity: number
@@ -62,6 +52,70 @@ interface FoundProduct {
   barcode: string | null
   totalStock: number
   category: { name: string } | null
+}
+
+interface EntryFormData {
+  productId: string
+  locationId: string
+  quantity: number
+  serialNumber: string
+  invoiceNumber: string
+  purchaseDate: string
+  supplier: string
+  unitCost: string
+  notes: string
+}
+
+interface NewProductData {
+  name: string
+  brand: string
+  model: string
+  capacity: string
+  description: string
+  barcode: string
+  unitPrice: string
+  categoryId: string
+}
+
+interface Location {
+  id: string
+  name: string
+  address: string | null
+}
+
+interface Product {
+  id: string
+  name: string
+  brand: string | null
+  model: string | null
+  barcode: string | null
+  totalStock: number
+  category: { name: string } | null
+}
+
+interface InventoryItem {
+  id: string
+  quantity: number
+  serialNumber: string | null
+  invoiceNumber: string | null
+  invoiceUrl: string | null
+  purchaseDate: string | null
+  supplier: string | null
+  unitCost: number | null
+  totalCost: number | null
+  notes: string | null
+  createdAt: string
+  product: {
+    id: string
+    name: string
+    brand: string | null
+    model: string | null
+    barcode: string | null
+  }
+  location: {
+    id: string
+    name: string
+  }
 }
 
 const fetchInventoryData = async (): Promise<InventoryData> => {
@@ -83,20 +137,60 @@ const fetchCategories = async () => {
   return result.success ? result.data : []
 }
 
+const fetchLocations = async (): Promise<Location[]> => {
+  const response = await fetch('/api/locations')
+  if (!response.ok) return []
+  const result = await response.json()
+  return result.success ? result.data : []
+}
+
+const fetchProducts = async (): Promise<Product[]> => {
+  const response = await fetch('/api/products')
+  if (!response.ok) return []
+  const result = await response.json()
+  return result.success ? result.data : []
+}
+
+const fetchInventoryItems = async (): Promise<InventoryItem[]> => {
+  const response = await fetch('/api/inventory/entries')
+  if (!response.ok) return []
+  const result = await response.json()
+  return result.success ? result.data : []
+}
+
 export default function InventoryPage() {
   const queryClient = useQueryClient()
-  const [dialogOpen, setDialogOpen] = useState(false)
   const [exitDialogOpen, setExitDialogOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
   const [processingExit, setProcessingExit] = useState(false)
   const [searchingProduct, setSearchingProduct] = useState(false)
   const [foundProduct, setFoundProduct] = useState<FoundProduct | null>(null)
   const [exitSuccess, setExitSuccess] = useState<string | null>(null)
   const [exitError, setExitError] = useState<string | null>(null)
-  const barcodeInputRef = useRef<HTMLInputElement>(null)
   const exitBarcodeInputRef = useRef<HTMLInputElement>(null)
+  const barcodeInputRef = useRef<HTMLInputElement>(null)
 
-  const [formData, setFormData] = useState<ProductFormData>({
+  const [exitFormData, setExitFormData] = useState<ExitFormData>({
+    barcode: '',
+    quantity: 1,
+    reason: '',
+    notes: ''
+  })
+
+  // Entry dialog states
+  const [entryDialogOpen, setEntryDialogOpen] = useState(false)
+  const [isNewProduct, setIsNewProduct] = useState(false)
+  const [entryFormData, setEntryFormData] = useState<EntryFormData>({
+    productId: '',
+    locationId: '',
+    quantity: 1,
+    serialNumber: '',
+    invoiceNumber: '',
+    purchaseDate: '',
+    supplier: '',
+    unitCost: '',
+    notes: ''
+  })
+  const [newProductData, setNewProductData] = useState<NewProductData>({
     name: '',
     brand: '',
     model: '',
@@ -106,13 +200,17 @@ export default function InventoryPage() {
     unitPrice: '',
     categoryId: ''
   })
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
+  const [invoicePreview, setInvoicePreview] = useState<string | null>(null)
+  const [uploadingInvoice, setUploadingInvoice] = useState(false)
+  const [savingEntry, setSavingEntry] = useState(false)
+  const [entrySuccess, setEntrySuccess] = useState<string | null>(null)
+  const [entryError, setEntryError] = useState<string | null>(null)
+  const invoiceInputRef = useRef<HTMLInputElement>(null)
 
-  const [exitFormData, setExitFormData] = useState<ExitFormData>({
-    barcode: '',
-    quantity: 1,
-    reason: '',
-    notes: ''
-  })
+  // Detail dialog states
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
 
   const { data: inventoryData, isLoading: loading, error, refetch } = useQuery({
     queryKey: ['inventory'],
@@ -124,66 +222,20 @@ export default function InventoryPage() {
     queryFn: fetchCategories,
   })
 
-  const createProductMutation = useMutation({
-    mutationFn: async (data: ProductFormData) => {
-      const response = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      })
-      const result = await response.json()
-      if (!result.success) {
-        throw new Error(result.error || 'Error al crear producto')
-      }
-      return result.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inventory'] })
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      setDialogOpen(false)
-      resetForm()
-    }
+  const { data: locations = [] } = useQuery({
+    queryKey: ['locations'],
+    queryFn: fetchLocations,
   })
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      brand: '',
-      model: '',
-      capacity: '',
-      description: '',
-      barcode: '',
-      unitPrice: '',
-      categoryId: ''
-    })
-  }
+  const { data: products = [] } = useQuery({
+    queryKey: ['products'],
+    queryFn: fetchProducts,
+  })
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await createProductMutation.mutateAsync(formData)
-    } catch (error) {
-      console.error('Error:', error)
-      alert(error instanceof Error ? error.message : 'Error al crear producto')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleInputChange = (field: keyof ProductFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-  }
-
-  // Focus on barcode input when dialog opens
-  const handleDialogOpen = (open: boolean) => {
-    setDialogOpen(open)
-    if (open) {
-      setTimeout(() => barcodeInputRef.current?.focus(), 100)
-    } else {
-      resetForm()
-    }
-  }
+  const { data: inventoryItems = [], refetch: refetchItems } = useQuery({
+    queryKey: ['inventoryItems'],
+    queryFn: fetchInventoryItems,
+  })
 
   // Exit dialog handlers
   const resetExitForm = () => {
@@ -288,6 +340,185 @@ export default function InventoryPage() {
     }
   }
 
+  // Entry dialog handlers
+  const resetEntryForm = () => {
+    setEntryFormData({
+      productId: '',
+      locationId: '',
+      quantity: 1,
+      serialNumber: '',
+      invoiceNumber: '',
+      purchaseDate: '',
+      supplier: '',
+      unitCost: '',
+      notes: ''
+    })
+    setNewProductData({
+      name: '',
+      brand: '',
+      model: '',
+      capacity: '',
+      description: '',
+      barcode: '',
+      unitPrice: '',
+      categoryId: ''
+    })
+    setIsNewProduct(false)
+    setInvoiceFile(null)
+    setInvoicePreview(null)
+    setEntrySuccess(null)
+    setEntryError(null)
+  }
+
+  const handleEntryDialogOpen = (open: boolean) => {
+    setEntryDialogOpen(open)
+    if (!open) {
+      resetEntryForm()
+    }
+  }
+
+  const handleInvoiceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+      if (!allowedTypes.includes(file.type)) {
+        setEntryError('Tipo de archivo no permitido. Use JPG, PNG, WEBP o PDF')
+        return
+      }
+      // Validate file size (10MB max)
+      if (file.size > 10 * 1024 * 1024) {
+        setEntryError('El archivo es muy grande. Máximo 10MB')
+        return
+      }
+      setInvoiceFile(file)
+      setEntryError(null)
+      // Generate preview for images
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          setInvoicePreview(reader.result as string)
+        }
+        reader.readAsDataURL(file)
+      } else {
+        setInvoicePreview(null)
+      }
+    }
+  }
+
+  const clearInvoice = () => {
+    setInvoiceFile(null)
+    setInvoicePreview(null)
+    if (invoiceInputRef.current) {
+      invoiceInputRef.current.value = ''
+    }
+  }
+
+  const handleEntrySubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    // Validate based on mode
+    if (isNewProduct) {
+      if (!newProductData.name || !newProductData.categoryId) {
+        setEntryError('Nombre y categoría del producto son requeridos')
+        return
+      }
+    } else {
+      if (!entryFormData.productId) {
+        setEntryError('Selecciona un producto')
+        return
+      }
+    }
+
+    if (!entryFormData.locationId || entryFormData.quantity <= 0) {
+      setEntryError('Ubicación y cantidad son requeridos')
+      return
+    }
+
+    setSavingEntry(true)
+    setEntryError(null)
+    setEntrySuccess(null)
+
+    try {
+      let productId = entryFormData.productId
+
+      // If new product, create it first
+      if (isNewProduct) {
+        const productResponse = await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newProductData)
+        })
+        const productResult = await productResponse.json()
+        if (!productResult.success) {
+          throw new Error(productResult.error || 'Error al crear producto')
+        }
+        productId = productResult.data.id
+      }
+
+      // Upload invoice if present
+      let invoiceUrl = null
+      if (invoiceFile) {
+        setUploadingInvoice(true)
+        const formData = new FormData()
+        formData.append('invoice', invoiceFile)
+
+        const uploadResponse = await fetch('/api/inventory/upload-invoice', {
+          method: 'POST',
+          body: formData
+        })
+        const uploadResult = await uploadResponse.json()
+        if (uploadResult.success) {
+          invoiceUrl = uploadResult.data.invoiceUrl
+        } else {
+          throw new Error(uploadResult.error || 'Error al subir factura')
+        }
+        setUploadingInvoice(false)
+      }
+
+      // Create inventory entry
+      const response = await fetch('/api/inventory/entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          locationId: entryFormData.locationId,
+          quantity: entryFormData.quantity,
+          serialNumber: entryFormData.serialNumber || null,
+          invoiceNumber: entryFormData.invoiceNumber || null,
+          invoiceUrl,
+          purchaseDate: entryFormData.purchaseDate || null,
+          supplier: entryFormData.supplier || null,
+          unitCost: entryFormData.unitCost ? parseFloat(entryFormData.unitCost) : null,
+          notes: entryFormData.notes || null
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setEntrySuccess(result.message || 'Entrada de inventario registrada')
+        queryClient.invalidateQueries({ queryKey: ['inventory'] })
+        queryClient.invalidateQueries({ queryKey: ['inventoryItems'] })
+        queryClient.invalidateQueries({ queryKey: ['products'] })
+        resetEntryForm()
+      } else {
+        setEntryError(result.error || 'Error al registrar entrada')
+      }
+    } catch (error: any) {
+      setEntryError(error.message || 'Error al registrar entrada de inventario')
+    } finally {
+      setSavingEntry(false)
+      setUploadingInvoice(false)
+    }
+  }
+
+  // View item details
+  const handleViewDetails = (item: InventoryItem) => {
+    setSelectedItem(item)
+    setDetailDialogOpen(true)
+  }
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-MX', {
       style: 'currency',
@@ -367,138 +598,12 @@ export default function InventoryPage() {
             <Minus className="mr-2 h-4 w-4" />
             Ajuste de Inventario
           </Button>
-          <Button onClick={() => handleDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Agregar Producto
+          <Button variant="default" onClick={() => handleEntryDialogOpen(true)}>
+            <ArrowUpCircle className="mr-2 h-4 w-4" />
+            Entrada de Inventario
           </Button>
         </div>
       </div>
-
-      {/* Add Product Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={handleDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Agregar Nuevo Producto</DialogTitle>
-            <DialogDescription>
-              Ingresa los datos del producto. Puedes escanear el código de barras con un lector USB.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <div className="grid gap-4 py-4">
-              {/* Barcode Field - First for scanner focus */}
-              <div className="space-y-2">
-                <Label htmlFor="barcode" className="flex items-center gap-2">
-                  <ScanBarcode className="h-4 w-4" />
-                  Código de Barras
-                </Label>
-                <Input
-                  ref={barcodeInputRef}
-                  id="barcode"
-                  value={formData.barcode}
-                  onChange={(e) => handleInputChange('barcode', e.target.value)}
-                  placeholder="Escanea o ingresa el código de barras"
-                  className="font-mono"
-                />
-                {formData.barcode && (
-                  <div className="flex justify-center p-4 bg-white rounded border">
-                    <BarcodeDisplay value={formData.barcode} width={1.5} height={50} fontSize={12} />
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nombre del Producto *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
-                    placeholder="Ej: Panel Solar 400W"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="category">Categoría *</Label>
-                  <Select value={formData.categoryId} onValueChange={(v) => handleInputChange('categoryId', v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar categoría" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat: any) => (
-                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="brand">Marca</Label>
-                  <Input
-                    id="brand"
-                    value={formData.brand}
-                    onChange={(e) => handleInputChange('brand', e.target.value)}
-                    placeholder="Ej: Canadian Solar"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="model">Modelo</Label>
-                  <Input
-                    id="model"
-                    value={formData.model}
-                    onChange={(e) => handleInputChange('model', e.target.value)}
-                    placeholder="Ej: CS6R-410MS"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="capacity">Capacidad</Label>
-                  <Input
-                    id="capacity"
-                    value={formData.capacity}
-                    onChange={(e) => handleInputChange('capacity', e.target.value)}
-                    placeholder="Ej: 400W, 6000W"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="unitPrice">Precio Unitario (MXN)</Label>
-                  <Input
-                    id="unitPrice"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formData.unitPrice}
-                    onChange={(e) => handleInputChange('unitPrice', e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Descripción</Label>
-                <Input
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
-                  placeholder="Descripción opcional del producto"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => handleDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={saving || !formData.name || !formData.categoryId}>
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                {saving ? 'Guardando...' : 'Crear Producto'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       {/* Inventory Exit Dialog */}
       <Dialog open={exitDialogOpen} onOpenChange={handleExitDialogOpen}>
@@ -647,6 +752,490 @@ export default function InventoryPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Inventory Entry Dialog */}
+      <Dialog open={entryDialogOpen} onOpenChange={handleEntryDialogOpen}>
+        <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowUpCircle className="h-5 w-5" />
+              Entrada de Inventario
+            </DialogTitle>
+            <DialogDescription>
+              Registra la entrada de productos al inventario. Puedes adjuntar la factura del proveedor.
+            </DialogDescription>
+          </DialogHeader>
+
+          {entrySuccess && (
+            <Alert className="bg-green-50 border-green-200">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <AlertDescription className="text-green-800">
+                {entrySuccess}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {entryError && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>{entryError}</AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={handleEntrySubmit}>
+            <div className="grid gap-4 py-4">
+              {/* Product Type Toggle */}
+              <div className="space-y-2">
+                <Label>Producto *</Label>
+                <div className="flex gap-2 mb-2">
+                  <Button
+                    type="button"
+                    variant={!isNewProduct ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setIsNewProduct(false)
+                      setEntryFormData(prev => ({ ...prev, productId: '' }))
+                    }}
+                  >
+                    Producto existente
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={isNewProduct ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setIsNewProduct(true)
+                      setEntryFormData(prev => ({ ...prev, productId: '' }))
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Nuevo producto
+                  </Button>
+                </div>
+
+                {!isNewProduct ? (
+                  <Select
+                    value={entryFormData.productId}
+                    onValueChange={(v) => setEntryFormData(prev => ({ ...prev, productId: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar producto" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.map((p: Product) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name} {p.brand && `- ${p.brand}`} {p.model && `(${p.model})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+                    {/* Barcode */}
+                    <div className="space-y-2">
+                      <Label htmlFor="new-barcode" className="flex items-center gap-2">
+                        <ScanBarcode className="h-4 w-4" />
+                        Código de Barras
+                      </Label>
+                      <Input
+                        ref={barcodeInputRef}
+                        id="new-barcode"
+                        value={newProductData.barcode}
+                        onChange={(e) => setNewProductData(prev => ({ ...prev, barcode: e.target.value }))}
+                        placeholder="Escanea o ingresa el código"
+                        className="font-mono"
+                      />
+                      {newProductData.barcode && (
+                        <div className="flex justify-center p-2 bg-white rounded border">
+                          <BarcodeDisplay value={newProductData.barcode} width={1.2} height={40} fontSize={10} />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="new-name">Nombre *</Label>
+                        <Input
+                          id="new-name"
+                          value={newProductData.name}
+                          onChange={(e) => setNewProductData(prev => ({ ...prev, name: e.target.value }))}
+                          placeholder="Ej: Panel Solar 400W"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-category">Categoría *</Label>
+                        <Select
+                          value={newProductData.categoryId}
+                          onValueChange={(v) => setNewProductData(prev => ({ ...prev, categoryId: v }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Categoría" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map((cat: any) => (
+                              <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="new-brand">Marca</Label>
+                        <Input
+                          id="new-brand"
+                          value={newProductData.brand}
+                          onChange={(e) => setNewProductData(prev => ({ ...prev, brand: e.target.value }))}
+                          placeholder="Ej: Canadian Solar"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-model">Modelo</Label>
+                        <Input
+                          id="new-model"
+                          value={newProductData.model}
+                          onChange={(e) => setNewProductData(prev => ({ ...prev, model: e.target.value }))}
+                          placeholder="Ej: CS6R-410MS"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="new-capacity">Capacidad</Label>
+                        <Input
+                          id="new-capacity"
+                          value={newProductData.capacity}
+                          onChange={(e) => setNewProductData(prev => ({ ...prev, capacity: e.target.value }))}
+                          placeholder="Ej: 400W, 6000W"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-price">Precio Venta (MXN)</Label>
+                        <Input
+                          id="new-price"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={newProductData.unitPrice}
+                          onChange={(e) => setNewProductData(prev => ({ ...prev, unitPrice: e.target.value }))}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="new-description">Descripción</Label>
+                      <Input
+                        id="new-description"
+                        value={newProductData.description}
+                        onChange={(e) => setNewProductData(prev => ({ ...prev, description: e.target.value }))}
+                        placeholder="Descripción opcional"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Location Selection */}
+              <div className="space-y-2">
+                <Label htmlFor="entry-location">Ubicación *</Label>
+                <Select
+                  value={entryFormData.locationId}
+                  onValueChange={(v) => setEntryFormData(prev => ({ ...prev, locationId: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar ubicación" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locations.map((loc: Location) => (
+                      <SelectItem key={loc.id} value={loc.id}>
+                        {loc.name} {loc.address && `- ${loc.address}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Quantity */}
+                <div className="space-y-2">
+                  <Label htmlFor="entry-quantity">Cantidad *</Label>
+                  <Input
+                    id="entry-quantity"
+                    type="number"
+                    min="1"
+                    value={entryFormData.quantity}
+                    onChange={(e) => setEntryFormData(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                  />
+                </div>
+
+                {/* Unit Cost */}
+                <div className="space-y-2">
+                  <Label htmlFor="entry-unit-cost">Costo Unitario (MXN)</Label>
+                  <Input
+                    id="entry-unit-cost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={entryFormData.unitCost}
+                    onChange={(e) => setEntryFormData(prev => ({ ...prev, unitCost: e.target.value }))}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Supplier */}
+                <div className="space-y-2">
+                  <Label htmlFor="entry-supplier">Proveedor</Label>
+                  <Input
+                    id="entry-supplier"
+                    value={entryFormData.supplier}
+                    onChange={(e) => setEntryFormData(prev => ({ ...prev, supplier: e.target.value }))}
+                    placeholder="Nombre del proveedor"
+                  />
+                </div>
+
+                {/* Purchase Date */}
+                <div className="space-y-2">
+                  <Label htmlFor="entry-date">Fecha de Compra</Label>
+                  <Input
+                    id="entry-date"
+                    type="date"
+                    value={entryFormData.purchaseDate}
+                    onChange={(e) => setEntryFormData(prev => ({ ...prev, purchaseDate: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Invoice Number */}
+                <div className="space-y-2">
+                  <Label htmlFor="entry-invoice">Número de Factura</Label>
+                  <Input
+                    id="entry-invoice"
+                    value={entryFormData.invoiceNumber}
+                    onChange={(e) => setEntryFormData(prev => ({ ...prev, invoiceNumber: e.target.value }))}
+                    placeholder="Ej: FAC-001234"
+                  />
+                </div>
+
+                {/* Serial Number */}
+                <div className="space-y-2">
+                  <Label htmlFor="entry-serial">Número de Serie</Label>
+                  <Input
+                    id="entry-serial"
+                    value={entryFormData.serialNumber}
+                    onChange={(e) => setEntryFormData(prev => ({ ...prev, serialNumber: e.target.value }))}
+                    placeholder="Opcional"
+                  />
+                </div>
+              </div>
+
+              {/* Invoice Upload */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Factura (archivo)
+                </Label>
+                <div className="border-2 border-dashed rounded-lg p-4">
+                  {!invoiceFile ? (
+                    <div className="text-center">
+                      <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                      <p className="text-sm text-muted-foreground mb-2">
+                        Arrastra o selecciona un archivo
+                      </p>
+                      <Input
+                        ref={invoiceInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        onChange={handleInvoiceChange}
+                        className="hidden"
+                        id="invoice-upload"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => invoiceInputRef.current?.click()}
+                      >
+                        Seleccionar archivo
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        JPG, PNG, WEBP o PDF (máx. 10MB)
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-4">
+                      {invoicePreview ? (
+                        <div className="relative w-24 h-24 border rounded overflow-hidden">
+                          <Image
+                            src={invoicePreview}
+                            alt="Preview"
+                            fill
+                            className="object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-24 h-24 border rounded flex items-center justify-center bg-muted">
+                          <FileText className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{invoiceFile.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(invoiceFile.size / 1024).toFixed(1)} KB
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={clearInvoice}
+                          className="mt-2 text-red-500 hover:text-red-700"
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Eliminar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label htmlFor="entry-notes">Notas</Label>
+                <Input
+                  id="entry-notes"
+                  value={entryFormData.notes}
+                  onChange={(e) => setEntryFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Notas adicionales"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => handleEntryDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={savingEntry || (!isNewProduct && !entryFormData.productId) || (isNewProduct && (!newProductData.name || !newProductData.categoryId)) || !entryFormData.locationId || entryFormData.quantity <= 0}
+              >
+                {savingEntry ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {uploadingInvoice ? 'Subiendo factura...' : 'Guardando...'}
+                  </>
+                ) : (
+                  <>
+                    <ArrowUpCircle className="mr-2 h-4 w-4" />
+                    Registrar Entrada
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Inventory Item Detail Dialog */}
+      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Detalle del Item de Inventario
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedItem && (
+            <div className="space-y-4">
+              {/* Product Info */}
+              <div className="rounded-lg border p-4 bg-muted/50">
+                <h4 className="font-semibold text-lg">{selectedItem.product.name}</h4>
+                <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
+                  {selectedItem.product.brand && (
+                    <p><span className="text-muted-foreground">Marca:</span> {selectedItem.product.brand}</p>
+                  )}
+                  {selectedItem.product.model && (
+                    <p><span className="text-muted-foreground">Modelo:</span> {selectedItem.product.model}</p>
+                  )}
+                  <p><span className="text-muted-foreground">Ubicación:</span> {selectedItem.location.name}</p>
+                  <p><span className="text-muted-foreground">Cantidad:</span> {selectedItem.quantity} unidades</p>
+                </div>
+              </div>
+
+              {/* Invoice & Purchase Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h5 className="font-medium mb-2">Información de Compra</h5>
+                  <div className="space-y-1 text-sm">
+                    {selectedItem.supplier && (
+                      <p><span className="text-muted-foreground">Proveedor:</span> {selectedItem.supplier}</p>
+                    )}
+                    {selectedItem.purchaseDate && (
+                      <p><span className="text-muted-foreground">Fecha:</span> {new Date(selectedItem.purchaseDate).toLocaleDateString('es-MX')}</p>
+                    )}
+                    {selectedItem.unitCost !== null && (
+                      <p><span className="text-muted-foreground">Costo Unitario:</span> {formatCurrency(selectedItem.unitCost)}</p>
+                    )}
+                    {selectedItem.totalCost !== null && (
+                      <p><span className="text-muted-foreground">Costo Total:</span> {formatCurrency(selectedItem.totalCost)}</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <h5 className="font-medium mb-2">Factura</h5>
+                  <div className="space-y-1 text-sm">
+                    {selectedItem.invoiceNumber ? (
+                      <p><span className="text-muted-foreground">Número:</span> {selectedItem.invoiceNumber}</p>
+                    ) : (
+                      <p className="text-muted-foreground">Sin número de factura</p>
+                    )}
+                    {selectedItem.invoiceUrl && (
+                      <a
+                        href={selectedItem.invoiceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-600 hover:underline mt-2"
+                      >
+                        <Eye className="h-4 w-4" />
+                        Ver factura
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Serial & Notes */}
+              {(selectedItem.serialNumber || selectedItem.notes) && (
+                <div className="border-t pt-4">
+                  {selectedItem.serialNumber && (
+                    <p className="text-sm"><span className="text-muted-foreground">Número de Serie:</span> {selectedItem.serialNumber}</p>
+                  )}
+                  {selectedItem.notes && (
+                    <p className="text-sm mt-2"><span className="text-muted-foreground">Notas:</span> {selectedItem.notes}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Dates */}
+              <div className="border-t pt-4 text-xs text-muted-foreground">
+                <p>Registrado: {new Date(selectedItem.createdAt).toLocaleString('es-MX')}</p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -769,6 +1358,96 @@ export default function InventoryPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Inventory Items List */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Package className="h-5 w-5" />
+            Items de Inventario
+          </CardTitle>
+          <CardDescription>Lista de productos en inventario con detalles de factura y proveedor</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {inventoryItems.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3 px-2 font-medium">Producto</th>
+                    <th className="text-left py-3 px-2 font-medium">Ubicación</th>
+                    <th className="text-center py-3 px-2 font-medium">Cantidad</th>
+                    <th className="text-left py-3 px-2 font-medium">Proveedor</th>
+                    <th className="text-left py-3 px-2 font-medium">Factura</th>
+                    <th className="text-right py-3 px-2 font-medium">Costo Unit.</th>
+                    <th className="text-center py-3 px-2 font-medium">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inventoryItems.slice(0, 20).map((item) => (
+                    <tr key={item.id} className="border-b hover:bg-muted/50">
+                      <td className="py-3 px-2">
+                        <div>
+                          <p className="font-medium">{item.product.name}</p>
+                          {item.product.brand && (
+                            <p className="text-xs text-muted-foreground">{item.product.brand} {item.product.model && `- ${item.product.model}`}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-2">{item.location.name}</td>
+                      <td className="py-3 px-2 text-center font-medium">{item.quantity}</td>
+                      <td className="py-3 px-2">{item.supplier || '-'}</td>
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-2">
+                          {item.invoiceNumber || '-'}
+                          {item.invoiceUrl && (
+                            <a
+                              href={item.invoiceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800"
+                              title="Ver factura"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-2 text-right">
+                        {item.unitCost !== null ? formatCurrency(item.unitCost) : '-'}
+                      </td>
+                      <td className="py-3 px-2 text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewDetails(item)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {inventoryItems.length > 20 && (
+                <p className="text-center text-sm text-muted-foreground mt-4">
+                  Mostrando 20 de {inventoryItems.length} items
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Package className="mx-auto h-12 w-12 mb-4 text-gray-300" />
+              <h3 className="text-lg font-semibold mb-2">Sin items de inventario</h3>
+              <p className="text-sm mb-4">Agrega productos al inventario para verlos aquí</p>
+              <Button onClick={() => handleEntryDialogOpen(true)}>
+                <ArrowUpCircle className="mr-2 h-4 w-4" />
+                Agregar Entrada
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

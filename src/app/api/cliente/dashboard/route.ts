@@ -85,6 +85,45 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Get upcoming and overdue payments (for notifications)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const fiveDaysFromNow = new Date()
+    fiveDaysFromNow.setDate(fiveDaysFromNow.getDate() + 5)
+
+    const scheduledPayments = await prisma.payment.findMany({
+      where: {
+        order: {
+          clientId,
+        },
+        status: 'PENDING',
+        dueDate: {
+          not: null,
+        },
+      },
+      include: {
+        order: {
+          select: {
+            orderNumber: true,
+            financingMonths: true,
+          },
+        },
+      },
+      orderBy: {
+        dueDate: 'asc',
+      },
+    })
+
+    // Separate payments into categories
+    const upcomingPayments = scheduledPayments.filter(
+      (p) => p.dueDate && p.dueDate <= fiveDaysFromNow && p.dueDate >= today
+    )
+
+    const overduePayments = scheduledPayments.filter(
+      (p) => p.dueDate && p.dueDate < today
+    )
+
     // Get Growatt daily history for monthly trend
     const sixMonthsAgo = new Date()
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
@@ -100,13 +139,28 @@ export async function GET(request: NextRequest) {
     // Aggregate by month
     const monthlyTrend = aggregateByMonth(dailyHistory)
 
+    // Calculate current month's generation from daily history
+    const now = new Date()
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const currentMonthGeneration = dailyHistory
+      .filter(record => new Date(record.date) >= currentMonthStart)
+      .reduce((sum, record) => sum + (record.dailyGeneration?.toNumber() || 0), 0)
+
     // Build stats
+    const totalGeneration = growattCache?.totalGeneration?.toNumber() || 0
+    const dailyGeneration = growattCache?.dailyGeneration?.toNumber() || 0
+
+    // Determine system status - consider "online" if we have valid generation data
+    // This matches the logic in /api/cliente/sistema
+    const hasValidData = totalGeneration > 0
+    const systemStatus = hasValidData ? 'online' : (growattCache?.status || 'offline')
+
     const stats = {
-      totalEnergyGenerated: growattCache?.totalGeneration?.toNumber() || 0,
-      monthlyEnergy: growattCache?.monthlyGeneration?.toNumber() || 0,
-      dailyEnergy: growattCache?.dailyGeneration?.toNumber() || 0,
+      totalEnergyGenerated: totalGeneration,
+      monthlyEnergy: currentMonthGeneration,
+      dailyEnergy: dailyGeneration,
       co2Saved: growattCache?.co2Reduction?.toNumber() || 0,
-      systemStatus: growattCache?.status || 'offline',
+      systemStatus,
       pendingMaintenance
     }
 
@@ -122,7 +176,37 @@ export async function GET(request: NextRequest) {
           status: m.status,
           scheduledDate: m.scheduledDate?.toISOString() || null
         })),
-        monthlyTrend
+        monthlyTrend,
+        // Payment notifications
+        paymentAlerts: {
+          upcoming: upcomingPayments.map((p) => ({
+            id: p.id,
+            amount: Number(p.amount),
+            dueDate: p.dueDate?.toISOString(),
+            installmentNumber: p.installmentNumber,
+            totalInstallments: p.order.financingMonths,
+            orderNumber: p.order.orderNumber,
+            daysUntilDue: p.dueDate
+              ? Math.ceil(
+                  (p.dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+                )
+              : null,
+          })),
+          overdue: overduePayments.map((p) => ({
+            id: p.id,
+            amount: Number(p.amount),
+            dueDate: p.dueDate?.toISOString(),
+            installmentNumber: p.installmentNumber,
+            totalInstallments: p.order.financingMonths,
+            orderNumber: p.order.orderNumber,
+            daysOverdue: p.dueDate
+              ? Math.ceil(
+                  (today.getTime() - p.dueDate.getTime()) / (1000 * 60 * 60 * 24)
+                )
+              : null,
+          })),
+          hasAlerts: upcomingPayments.length > 0 || overduePayments.length > 0,
+        }
       }
     })
   } catch (error) {

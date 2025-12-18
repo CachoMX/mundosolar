@@ -60,6 +60,7 @@ export async function GET(
                 id: true,
                 name: true,
                 email: true,
+                phone: true,
                 image: true,
               }
             }
@@ -159,8 +160,28 @@ export async function PATCH(
       privateNotes,
       workPerformed,
       laborHours,
-      cost
+      cost,
+      technicianIds
     } = body
+
+    // If technicianIds is provided, update the technician assignments
+    if (technicianIds !== undefined && Array.isArray(technicianIds)) {
+      // Delete existing technician assignments
+      await withRetry(() => prisma.maintenanceTechnician.deleteMany({
+        where: { maintenanceId: params.id }
+      }))
+
+      // Create new technician assignments
+      if (technicianIds.length > 0) {
+        await withRetry(() => prisma.maintenanceTechnician.createMany({
+          data: technicianIds.map((techId: string, index: number) => ({
+            maintenanceId: params.id,
+            technicianId: techId,
+            role: index === 0 ? 'LEAD' : 'ASSISTANT'
+          }))
+        }))
+      }
+    }
 
     const maintenance = await withRetry(() => prisma.maintenanceRecord.update({
       where: { id: params.id },

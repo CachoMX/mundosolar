@@ -36,8 +36,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { ArrowLeft, Save, Plus, Trash2, Loader2, Check, ChevronsUpDown, Search, ScanBarcode, Zap, CreditCard, DollarSign, MapPin } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, Loader2, Check, ChevronsUpDown, Search, ScanBarcode, Zap, CreditCard, DollarSign, MapPin, Percent, Calendar } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
@@ -145,6 +146,65 @@ export default function NewOrderPage() {
   const [paymentMethod, setPaymentMethod] = useState<string>('TRANSFER')
   const [paymentReference, setPaymentReference] = useState<string>('')
   const [paymentNotes, setPaymentNotes] = useState<string>('')
+  const [initialPaymentAmount, setInitialPaymentAmount] = useState<string>('')
+  const [paymentType, setPaymentType] = useState<string>('PARTIAL')
+
+  // Card details state (when payment method is CARD)
+  const [cardNumber, setCardNumber] = useState<string>('')
+  const [cardHolderName, setCardHolderName] = useState<string>('')
+  const [cardExpiry, setCardExpiry] = useState<string>('')
+  const [cardCvv, setCardCvv] = useState<string>('')
+
+  // Card helper functions
+  const formatCardNumber = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 16)
+    return digits.replace(/(\d{4})(?=\d)/g, '$1 ')
+  }
+
+  const formatExpiry = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 4)
+    if (digits.length >= 2) {
+      return digits.slice(0, 2) + '/' + digits.slice(2)
+    }
+    return digits
+  }
+
+  const validateLuhn = (cardNum: string) => {
+    const digits = cardNum.replace(/\D/g, '')
+    if (digits.length !== 16) return false
+
+    let sum = 0
+    for (let i = 0; i < digits.length; i++) {
+      let digit = parseInt(digits[i])
+      if ((digits.length - i) % 2 === 0) {
+        digit *= 2
+        if (digit > 9) digit -= 9
+      }
+      sum += digit
+    }
+    return sum % 10 === 0
+  }
+
+  const getCardBrand = (cardNum: string) => {
+    const digits = cardNum.replace(/\D/g, '')
+    if (digits.startsWith('4')) return 'VISA'
+    if (/^5[1-5]/.test(digits) || /^2[2-7]/.test(digits)) return 'MASTERCARD'
+    if (/^3[47]/.test(digits)) return 'AMEX'
+    return 'OTHER'
+  }
+
+  const getMaskedCardNumber = () => {
+    const digits = cardNumber.replace(/\D/g, '')
+    if (digits.length >= 4) {
+      return `****${digits.slice(-4)}`
+    }
+    return '****'
+  }
+
+  // Financing state
+  const [financingEnabled, setFinancingEnabled] = useState<boolean>(false)
+  const [financingMonths, setFinancingMonths] = useState<number>(12)
+  const [interestRate, setInterestRate] = useState<number>(0)
 
   // UI state
   const [clientOpen, setClientOpen] = useState(false)
@@ -288,6 +348,12 @@ export default function NewOrderPage() {
   const total = subtotal + taxAmount
   const depositAmount = depositRequired ? (total * depositPercentage / 100) : 0
 
+  // Calculate financing
+  const amountToFinance = depositRequired ? (total - depositAmount) : total
+  const interestAmount = financingEnabled ? (amountToFinance * interestRate / 100) : 0
+  const totalWithInterest = amountToFinance + interestAmount
+  const monthlyPayment = financingEnabled && financingMonths > 0 ? (totalWithInterest / financingMonths) : 0
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -320,13 +386,28 @@ export default function NewOrderPage() {
           depositRequired,
           depositPercentage: depositRequired ? depositPercentage : null,
           depositAmount: depositRequired ? depositAmount : null,
+          // Financing info
+          financingEnabled,
+          financingMonths: financingEnabled ? financingMonths : null,
+          interestRate: financingEnabled ? interestRate : null,
+          interestAmount: financingEnabled ? interestAmount : null,
+          monthlyPayment: financingEnabled ? monthlyPayment : null,
           // Initial payment if registering now
-          initialPayment: (depositRequired && registerPaymentNow) ? {
-            amount: depositAmount,
-            paymentType: 'DEPOSIT',
+          initialPayment: registerPaymentNow ? {
+            amount: depositRequired ? depositAmount : parseFloat(initialPaymentAmount) || 0,
+            paymentType: depositRequired ? 'DEPOSIT' : paymentType,
             paymentMethod,
             referenceNumber: paymentReference || null,
-            notes: paymentNotes || null,
+            notes: paymentMethod === 'CARD'
+              ? `${paymentNotes ? paymentNotes + ' | ' : ''}Tarjeta: ${getCardBrand(cardNumber)} ${getMaskedCardNumber()} - ${cardHolderName || 'N/A'} - Exp: ${cardExpiry}`
+              : (paymentNotes || null),
+            // Card details for reference (only store masked/safe data)
+            cardDetails: paymentMethod === 'CARD' ? {
+              holderName: cardHolderName || null,
+              lastFour: cardNumber.replace(/\D/g, '').slice(-4) || null,
+              brand: getCardBrand(cardNumber) || null,
+              expiry: cardExpiry || null,
+            } : null,
           } : null,
           items: items.map(item => ({
             productId: item.productId,
@@ -835,6 +916,7 @@ export default function NewOrderPage() {
                             min="1"
                             value={item.quantity}
                             onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                            onFocus={(e) => e.target.select()}
                             className="w-20"
                           />
                         </TableCell>
@@ -845,18 +927,28 @@ export default function NewOrderPage() {
                             step="0.01"
                             value={item.unitPrice}
                             onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                            onFocus={(e) => e.target.select()}
                             className="w-32"
                           />
                         </TableCell>
                         <TableCell>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.discount}
-                            onChange={(e) => updateItem(index, 'discount', parseFloat(e.target.value) || 0)}
-                            className="w-28"
-                          />
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                            <Input
+                              type="number"
+                              min="0"
+                              max={item.quantity * item.unitPrice}
+                              step="0.01"
+                              value={item.discount}
+                              onChange={(e) => {
+                                const maxDiscount = item.quantity * item.unitPrice
+                                const value = Math.min(parseFloat(e.target.value) || 0, maxDiscount)
+                                updateItem(index, 'discount', value)
+                              }}
+                              onFocus={(e) => e.target.select()}
+                              className="w-28 pl-7"
+                            />
+                          </div>
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           ${item.totalPrice.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
@@ -936,6 +1028,12 @@ export default function NewOrderPage() {
                     <p className="text-lg font-bold text-green-600">${depositAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
                   </div>
                 )}
+                {financingEnabled && (
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase">Pago Mensual ({financingMonths} meses)</p>
+                    <p className="text-lg font-bold text-purple-600">${monthlyPayment.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                  </div>
+                )}
               </div>
 
               {/* Options row */}
@@ -949,6 +1047,18 @@ export default function NewOrderPage() {
                   />
                   <Label htmlFor="deposit-switch" className="cursor-pointer">
                     ¿Dejará anticipo?
+                  </Label>
+                </div>
+
+                {/* Financiamiento checkbox */}
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="financing-switch"
+                    checked={financingEnabled}
+                    onCheckedChange={setFinancingEnabled}
+                  />
+                  <Label htmlFor="financing-switch" className="cursor-pointer">
+                    ¿Requiere financiamiento?
                   </Label>
                 </div>
               </div>
@@ -1025,15 +1135,308 @@ export default function NewOrderPage() {
                           className="bg-white dark:bg-gray-900"
                         />
                       </div>
+
+                      {/* Card Details - Only show when CARD is selected */}
+                      {paymentMethod === 'CARD' && (
+                        <div className="col-span-2 grid grid-cols-2 gap-4 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <div className="col-span-2 flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 text-sm font-medium">
+                              <CreditCard className="h-4 w-4" />
+                              Datos de la Tarjeta
+                            </div>
+                            {cardNumber.replace(/\D/g, '').length >= 4 && (
+                              <Badge variant="outline" className="text-xs">
+                                {getCardBrand(cardNumber)}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="col-span-2 space-y-2">
+                            <Label>Número de Tarjeta *</Label>
+                            <Input
+                              value={formatCardNumber(cardNumber)}
+                              onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, '').slice(0, 16))}
+                              placeholder="1234 5678 9012 3456"
+                              maxLength={19}
+                              className={`bg-white dark:bg-gray-900 font-mono ${
+                                cardNumber.replace(/\D/g, '').length === 16 && !validateLuhn(cardNumber)
+                                  ? 'border-red-500'
+                                  : ''
+                              }`}
+                            />
+                            {cardNumber.replace(/\D/g, '').length === 16 && !validateLuhn(cardNumber) && (
+                              <p className="text-xs text-red-500">Número de tarjeta inválido</p>
+                            )}
+                          </div>
+                          <div className="col-span-2 space-y-2">
+                            <Label>Nombre del Titular *</Label>
+                            <Input
+                              value={cardHolderName}
+                              onChange={(e) => setCardHolderName(e.target.value.toUpperCase())}
+                              placeholder="NOMBRE COMO APARECE EN LA TARJETA"
+                              className="bg-white dark:bg-gray-900 uppercase"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Fecha de Expiración *</Label>
+                            <Input
+                              value={cardExpiry}
+                              onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
+                              placeholder="MM/YY"
+                              maxLength={5}
+                              className="bg-white dark:bg-gray-900 font-mono"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>CVV/CVC *</Label>
+                            <Input
+                              type="password"
+                              value={cardCvv}
+                              onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                              placeholder="123"
+                              maxLength={4}
+                              className="bg-white dark:bg-gray-900 font-mono"
+                            />
+                          </div>
+                        </div>
+                      )}
+
                       <div className="col-span-2 space-y-2">
-                        <Label>Notas del Pago (opcional)</Label>
+                        <Label>Concepto/Descripción (opcional)</Label>
                         <Input
                           value={paymentNotes}
                           onChange={(e) => setPaymentNotes(e.target.value)}
-                          placeholder="Notas adicionales sobre el pago..."
+                          placeholder="Concepto o descripción del pago..."
                           className="bg-white dark:bg-gray-900"
                         />
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Financing Section */}
+              {financingEnabled && (
+                <div className="space-y-4 p-4 border rounded-lg bg-purple-50 dark:bg-purple-950">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Calendar className="h-4 w-4 text-purple-600" />
+                    <span className="font-medium">Configuración de Financiamiento</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Número de Meses</Label>
+                      <Select value={financingMonths.toString()} onValueChange={(v) => setFinancingMonths(Number(v))}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="3">3 meses</SelectItem>
+                          <SelectItem value="6">6 meses</SelectItem>
+                          <SelectItem value="9">9 meses</SelectItem>
+                          <SelectItem value="12">12 meses</SelectItem>
+                          <SelectItem value="18">18 meses</SelectItem>
+                          <SelectItem value="24">24 meses</SelectItem>
+                          <SelectItem value="36">36 meses</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tasa de Interés</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.5"
+                          value={interestRate}
+                          onChange={(e) => setInterestRate(parseFloat(e.target.value) || 0)}
+                          onFocus={(e) => e.target.select()}
+                          className="pr-8"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Financing Summary */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-3 bg-white dark:bg-gray-900 rounded-lg mt-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Monto a Financiar</p>
+                      <p className="font-semibold">${amountToFinance.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Interés ({interestRate}%)</p>
+                      <p className="font-semibold">${interestAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Total con Interés</p>
+                      <p className="font-semibold text-purple-600">${totalWithInterest.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Pago Mensual</p>
+                      <p className="font-bold text-lg text-purple-600">${monthlyPayment.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground mt-2">
+                    * El financiamiento se calcula sobre {depositRequired ? 'el saldo restante después del anticipo' : 'el total de la orden'}
+                  </p>
+                </div>
+              )}
+
+              {/* Register Payment Section - when no deposit */}
+              {!depositRequired && (
+                <div className="space-y-4 p-4 border rounded-lg bg-green-50 dark:bg-green-950">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-4 w-4 text-green-600" />
+                      <span className="font-medium">Registrar Pago Inicial</span>
+                    </div>
+                    <Switch
+                      id="payment-switch"
+                      checked={registerPaymentNow}
+                      onCheckedChange={setRegisterPaymentNow}
+                    />
+                  </div>
+
+                  {registerPaymentNow && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Monto del Pago *</Label>
+                          <div className="relative">
+                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={initialPaymentAmount}
+                              onChange={(e) => setInitialPaymentAmount(e.target.value)}
+                              placeholder="0.00"
+                              className="pl-9 bg-white dark:bg-gray-900"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Tipo de Pago</Label>
+                          <Select value={paymentType} onValueChange={setPaymentType}>
+                            <SelectTrigger className="bg-white dark:bg-gray-900">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="DEPOSIT">Anticipo</SelectItem>
+                              <SelectItem value="PARTIAL">Abono</SelectItem>
+                              <SelectItem value="FINAL">Liquidación</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Método de Pago</Label>
+                          <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                            <SelectTrigger className="bg-white dark:bg-gray-900">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="CASH">Efectivo</SelectItem>
+                              <SelectItem value="TRANSFER">Transferencia</SelectItem>
+                              <SelectItem value="CARD">Tarjeta</SelectItem>
+                              <SelectItem value="CHECK">Cheque</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>No. Referencia (opcional)</Label>
+                          <Input
+                            value={paymentReference}
+                            onChange={(e) => setPaymentReference(e.target.value)}
+                            placeholder="Ej: TRANS-12345"
+                            className="bg-white dark:bg-gray-900"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Card Details - Only show when CARD is selected */}
+                      {paymentMethod === 'CARD' && (
+                        <div className="grid grid-cols-2 gap-4 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <div className="col-span-2 flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 text-sm font-medium">
+                              <CreditCard className="h-4 w-4" />
+                              Datos de la Tarjeta
+                            </div>
+                            {cardNumber.replace(/\D/g, '').length >= 4 && (
+                              <Badge variant="outline" className="text-xs">
+                                {getCardBrand(cardNumber)}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="col-span-2 space-y-2">
+                            <Label>Número de Tarjeta *</Label>
+                            <Input
+                              value={formatCardNumber(cardNumber)}
+                              onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, '').slice(0, 16))}
+                              placeholder="1234 5678 9012 3456"
+                              maxLength={19}
+                              className={`bg-white dark:bg-gray-900 font-mono ${
+                                cardNumber.replace(/\D/g, '').length === 16 && !validateLuhn(cardNumber)
+                                  ? 'border-red-500'
+                                  : ''
+                              }`}
+                            />
+                            {cardNumber.replace(/\D/g, '').length === 16 && !validateLuhn(cardNumber) && (
+                              <p className="text-xs text-red-500">Número de tarjeta inválido</p>
+                            )}
+                          </div>
+                          <div className="col-span-2 space-y-2">
+                            <Label>Nombre del Titular *</Label>
+                            <Input
+                              value={cardHolderName}
+                              onChange={(e) => setCardHolderName(e.target.value.toUpperCase())}
+                              placeholder="NOMBRE COMO APARECE EN LA TARJETA"
+                              className="bg-white dark:bg-gray-900 uppercase"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Fecha de Expiración *</Label>
+                            <Input
+                              value={cardExpiry}
+                              onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
+                              placeholder="MM/YY"
+                              maxLength={5}
+                              className="bg-white dark:bg-gray-900 font-mono"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>CVV/CVC *</Label>
+                            <Input
+                              type="password"
+                              value={cardCvv}
+                              onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                              placeholder="123"
+                              maxLength={4}
+                              className="bg-white dark:bg-gray-900 font-mono"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <Label>Concepto/Descripción (opcional)</Label>
+                        <Input
+                          value={paymentNotes}
+                          onChange={(e) => setPaymentNotes(e.target.value)}
+                          placeholder="Concepto o descripción del pago..."
+                          className="bg-white dark:bg-gray-900"
+                        />
+                      </div>
+                      {initialPaymentAmount && parseFloat(initialPaymentAmount) > 0 && (
+                        <div className="flex justify-between text-sm p-2 bg-white dark:bg-gray-900 rounded-lg">
+                          <span>Saldo después del pago:</span>
+                          <span className="font-medium text-green-600">
+                            ${(total - parseFloat(initialPaymentAmount)).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

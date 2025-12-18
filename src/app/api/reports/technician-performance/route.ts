@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     const performanceData = await Promise.all(
       technicians.map(async (technician) => {
-        // Get all maintenances assigned to this technician in the date range
+        // Get all maintenances assigned to this technician in the date range (excluding cancelled)
         const assignments = await prisma.maintenanceTechnician.findMany({
           where: {
             technicianId: technician.id,
@@ -72,6 +72,9 @@ export async function GET(request: NextRequest) {
               scheduledDate: {
                 gte: startDate,
                 lte: endDate
+              },
+              status: {
+                not: 'CANCELLED'
               }
             }
           },

@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -40,7 +39,8 @@ import {
   Trash2,
   MapPin,
   FileText,
-  Cpu
+  Cpu,
+  Phone
 } from 'lucide-react'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 
@@ -121,18 +121,28 @@ const fetchMaintenanceData = async (): Promise<MaintenanceData> => {
 
 export default function MantenimientosPage() {
   const searchParams = useSearchParams()
-  const queryClient = useQueryClient()
   const [view, setView] = useState<'calendar' | 'table'>('calendar')
   const [dismissedRejections, setDismissedRejections] = useState<string[]>([])
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // React Query for maintenance data
-  const { data, isLoading: loading, refetch } = useQuery({
-    queryKey: ['cliente-mantenimientos'],
-    queryFn: fetchMaintenanceData,
-  })
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true)
+      const data = await fetchMaintenanceData()
+      setMetrics(data.metrics)
+      setEvents(data.events)
+    } catch (error) {
+      console.error('Error fetching maintenance data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  const metrics = data?.metrics || null
-  const events = data?.events || []
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   // Modal state
   const [showRequestModal, setShowRequestModal] = useState(false)
@@ -161,9 +171,9 @@ export default function MantenimientosPage() {
     preferredPeriod: 'AM' as 'AM' | 'PM'
   })
 
-  // Helper function to invalidate caches
-  const invalidateCaches = () => {
-    queryClient.invalidateQueries({ queryKey: ['cliente-mantenimientos'] })
+  // Helper function to refresh data
+  const refreshData = () => {
+    fetchData()
   }
 
   useEffect(() => {
@@ -261,7 +271,7 @@ export default function MantenimientosPage() {
         localStorage.setItem('dismissedRejections', JSON.stringify(newDismissed))
         setShowRejectionModal(false)
         setSelectedRejectedEvent(null)
-        invalidateCaches()
+        refreshData()
       } else {
         alert(result.error || 'Error al eliminar')
       }
@@ -333,7 +343,7 @@ export default function MantenimientosPage() {
         // Invalidate cache and close modal after successful request
         setTimeout(() => {
           setShowRequestModal(false)
-          invalidateCaches()
+          refreshData()
         }, 2000)
       } else {
         setRequestMessage({ type: 'error', text: data.error || 'Error al enviar solicitud' })
@@ -813,7 +823,18 @@ export default function MantenimientosPage() {
           <CardContent>
             <div className="space-y-3">
               {metrics.upcoming.map((item: any) => (
-                <div key={item.id} className="flex justify-between items-center p-3 border rounded-lg">
+                <div
+                  key={item.id}
+                  className="flex justify-between items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50"
+                  onClick={() => {
+                    // Find the event in the events array to get full details
+                    const event = events.find(e => e.id === item.id)
+                    if (event) {
+                      setSelectedAppointment(event)
+                      setShowDetailsModal(true)
+                    }
+                  }}
+                >
                   <div className="flex-1">
                     <p className="font-medium">{item.title}</p>
                     <p className="text-sm text-gray-600">
@@ -932,14 +953,28 @@ export default function MantenimientosPage() {
                 </div>
               </div>
 
-              {selectedAppointment?.resource?.technician && selectedAppointment.resource.technician !== 'Sin asignar' && (
-                <div className="flex items-center gap-3">
-                  <Wrench className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">Técnico asignado</p>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedAppointment.resource.technician}
-                    </p>
+              {selectedAppointment?.resource?.technicians && selectedAppointment.resource.technicians.length > 0 && (
+                <div className="flex items-start gap-3">
+                  <Wrench className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">Técnico{selectedAppointment.resource.technicians.length > 1 ? 's' : ''} asignado{selectedAppointment.resource.technicians.length > 1 ? 's' : ''}</p>
+                    <div className="space-y-2 mt-1">
+                      {selectedAppointment.resource.technicians.map((t: any, idx: number) => (
+                        <div key={idx} className="bg-gray-50 rounded-md p-2">
+                          <p className="text-sm text-muted-foreground font-medium">
+                            {t.technician?.name || 'Sin nombre'}
+                          </p>
+                          {t.technician?.phone && (
+                            <div className="flex items-center gap-1 text-sm text-blue-600 mt-1">
+                              <Phone className="h-3 w-3" />
+                              <a href={`tel:${t.technician.phone}`} className="hover:underline">
+                                {t.technician.phone}
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}

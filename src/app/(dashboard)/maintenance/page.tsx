@@ -1,8 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -52,60 +51,55 @@ interface CalendarEvent {
   resource: any
 }
 
-const fetchMetrics = async (): Promise<DashboardMetrics> => {
-  const response = await fetch('/api/maintenance/dashboard')
-  const result = await response.json()
-  if (!result.success) {
-    throw new Error(result.error || 'Error al cargar métricas')
-  }
-  return result.data
-}
-
-const fetchCalendarEvents = async (): Promise<CalendarEvent[]> => {
-  const startDate = new Date()
-  startDate.setDate(startDate.getDate() - 7)
-  const endDate = new Date()
-  endDate.setDate(endDate.getDate() + 30)
-
-  const response = await fetch(
-    `/api/maintenance/calendar?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
-  )
-  const result = await response.json()
-  if (!result.success) {
-    throw new Error(result.error || 'Error al cargar eventos')
-  }
-  return result.data.map((event: any) => ({
-    ...event,
-    start: new Date(event.start),
-    end: new Date(event.end)
-  }))
-}
-
 export default function MaintenancePage() {
   const router = useRouter()
-  const queryClient = useQueryClient()
   const [view, setView] = useState<'calendar' | 'table'>('calendar')
   const [showFormModal, setShowFormModal] = useState(false)
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // React Query for metrics
-  const { data: metrics, isLoading: metricsLoading } = useQuery({
-    queryKey: ['maintenance-metrics'],
-    queryFn: fetchMetrics,
-  })
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true)
 
-  // React Query for calendar events
-  const { data: events = [], isLoading: eventsLoading } = useQuery({
-    queryKey: ['maintenance-events'],
-    queryFn: fetchCalendarEvents,
-  })
+      // Fetch metrics
+      const metricsResponse = await fetch('/api/maintenance/dashboard')
+      const metricsResult = await metricsResponse.json()
+      if (metricsResult.success) {
+        setMetrics(metricsResult.data)
+      }
 
-  const loading = metricsLoading || eventsLoading
+      // Fetch calendar events
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - 7)
+      const endDate = new Date()
+      endDate.setDate(endDate.getDate() + 30)
+
+      const eventsResponse = await fetch(
+        `/api/maintenance/calendar?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
+      )
+      const eventsResult = await eventsResponse.json()
+      if (eventsResult.success) {
+        setEvents(eventsResult.data.map((event: any) => ({
+          ...event,
+          start: new Date(event.start),
+          end: new Date(event.end)
+        })))
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   const handleSuccess = () => {
-    // Invalidar cache para actualizar datos inmediatamente
-    queryClient.invalidateQueries({ queryKey: ['maintenance-metrics'] })
-    queryClient.invalidateQueries({ queryKey: ['maintenance-events'] })
-    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+    fetchData()
   }
 
   const getStatusBadge = (status: string) => {
@@ -273,7 +267,11 @@ export default function MaintenancePage() {
           <CardContent>
             <div className="space-y-2">
               {metrics.overdueList.slice(0, 3).map((item: any) => (
-                <div key={item.id} className="flex justify-between items-center p-3 bg-white rounded-lg">
+                <div
+                  key={item.id}
+                  className="flex justify-between items-center p-3 bg-white rounded-lg cursor-pointer hover:bg-gray-50"
+                  onClick={() => router.push(`/maintenance/${item.id}`)}
+                >
                   <div>
                     <p className="font-medium">{item.title}</p>
                     <p className="text-sm text-gray-600">
@@ -404,7 +402,11 @@ export default function MaintenancePage() {
           <CardContent>
             <div className="space-y-3">
               {metrics.upcoming.map((item: any) => (
-                <div key={item.id} className="flex justify-between items-center p-3 border rounded-lg">
+                <div
+                  key={item.id}
+                  className="flex justify-between items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50"
+                  onClick={() => router.push(`/maintenance/${item.id}`)}
+                >
                   <div className="flex-1">
                     <p className="font-medium">{item.title}</p>
                     <p className="text-sm text-gray-600">

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -51,7 +51,11 @@ import {
   CreditCard,
   Banknote,
   Building2,
-  Receipt
+  Receipt,
+  Upload,
+  ExternalLink,
+  X,
+  Image as ImageIcon
 } from 'lucide-react'
 import Link from 'next/link'
 import { format } from 'date-fns'
@@ -65,6 +69,7 @@ interface Payment {
   paymentDate: string
   referenceNumber: string | null
   notes: string | null
+  receiptUrl: string | null
   receivedBy: {
     id: string
     name: string | null
@@ -129,8 +134,7 @@ interface Order {
   invoice: any | null
 }
 
-export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params)
+export default function OrderDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const [order, setOrder] = useState<Order | null>(null)
@@ -143,6 +147,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [paymentsLoading, setPaymentsLoading] = useState(false)
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [savingPayment, setSavingPayment] = useState(false)
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
+  const [uploadingReceipt, setUploadingReceipt] = useState(false)
   const [newPayment, setNewPayment] = useState({
     amount: '',
     paymentType: 'PARTIAL',
@@ -155,12 +162,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   useEffect(() => {
     fetchOrder()
     fetchPayments()
-  }, [resolvedParams.id])
+  }, [params.id])
 
   const fetchOrder = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/orders/${resolvedParams.id}`)
+      const response = await fetch(`/api/orders/${params.id}`)
       const result = await response.json()
 
       if (result.success) {
@@ -207,7 +214,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const fetchPayments = async () => {
     try {
       setPaymentsLoading(true)
-      const response = await fetch(`/api/orders/${resolvedParams.id}/payments`)
+      const response = await fetch(`/api/orders/${params.id}/payments`)
       const result = await response.json()
 
       if (result.success) {
@@ -229,6 +236,39 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   }
 
+  const handleReceiptChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+      if (!allowedTypes.includes(file.type)) {
+        alert('Tipo de archivo no permitido. Use JPG, PNG, WEBP o PDF')
+        return
+      }
+      // Validate file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        alert('El archivo es muy grande. Máximo 10MB')
+        return
+      }
+      setReceiptFile(file)
+      // Create preview for images
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          setReceiptPreview(reader.result as string)
+        }
+        reader.readAsDataURL(file)
+      } else {
+        setReceiptPreview(null)
+      }
+    }
+  }
+
+  const clearReceipt = () => {
+    setReceiptFile(null)
+    setReceiptPreview(null)
+  }
+
   const handleAddPayment = async () => {
     if (!newPayment.amount || parseFloat(newPayment.amount) <= 0) {
       alert('Ingresa un monto válido')
@@ -237,7 +277,32 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
     setSavingPayment(true)
     try {
-      const response = await fetch(`/api/orders/${resolvedParams.id}/payments`, {
+      let receiptUrl = null
+
+      // Upload receipt first if there is one
+      if (receiptFile) {
+        setUploadingReceipt(true)
+        const formData = new FormData()
+        formData.append('receipt', receiptFile)
+
+        const uploadResponse = await fetch('/api/payments/upload-receipt', {
+          method: 'POST',
+          body: formData
+        })
+        const uploadResult = await uploadResponse.json()
+
+        if (uploadResult.success) {
+          receiptUrl = uploadResult.data.receiptUrl
+        } else {
+          alert(uploadResult.error || 'Error al subir el recibo')
+          setSavingPayment(false)
+          setUploadingReceipt(false)
+          return
+        }
+        setUploadingReceipt(false)
+      }
+
+      const response = await fetch(`/api/orders/${params.id}/payments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -246,7 +311,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           paymentMethod: newPayment.paymentMethod,
           paymentDate: newPayment.paymentDate,
           referenceNumber: newPayment.referenceNumber || null,
-          notes: newPayment.notes || null
+          notes: newPayment.notes || null,
+          receiptUrl
         })
       })
       const result = await response.json()
@@ -273,6 +339,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           referenceNumber: '',
           notes: ''
         })
+        clearReceipt()
       } else {
         alert(result.error || 'Error al registrar pago')
       }
@@ -281,6 +348,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       alert('Error al registrar pago')
     } finally {
       setSavingPayment(false)
+      setUploadingReceipt(false)
     }
   }
 
@@ -288,7 +356,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     if (!confirm('¿Estás seguro de eliminar este pago?')) return
 
     try {
-      const response = await fetch(`/api/orders/${resolvedParams.id}/payments/${paymentId}`, {
+      const response = await fetch(`/api/orders/${params.id}/payments/${paymentId}`, {
         method: 'DELETE'
       })
       const result = await response.json()
@@ -642,9 +710,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <DollarSign className="h-4 w-4" />
                 Pagos
               </CardTitle>
-              <CardDescription className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
                 Estado: {getPaymentStatusBadge(order.paymentStatus || 'PENDING')}
-              </CardDescription>
+              </div>
             </div>
             <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
               <DialogTrigger asChild>
@@ -737,14 +805,70 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       onChange={(e) => setNewPayment({ ...newPayment, notes: e.target.value })}
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="receipt">Comprobante de Pago</Label>
+                    {!receiptFile ? (
+                      <div className="border-2 border-dashed rounded-lg p-4 text-center hover:border-primary transition-colors cursor-pointer"
+                        onClick={() => document.getElementById('receipt-input')?.click()}
+                      >
+                        <input
+                          id="receipt-input"
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,application/pdf"
+                          className="hidden"
+                          onChange={handleReceiptChange}
+                        />
+                        <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                          Clic para subir comprobante
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          JPG, PNG, WEBP o PDF (máx. 10MB)
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="border rounded-lg p-3 flex items-center justify-between bg-muted/50">
+                        <div className="flex items-center gap-3">
+                          {receiptPreview ? (
+                            <img
+                              src={receiptPreview}
+                              alt="Preview"
+                              className="h-12 w-12 object-cover rounded"
+                            />
+                          ) : (
+                            <div className="h-12 w-12 bg-muted rounded flex items-center justify-center">
+                              <FileText className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-sm font-medium truncate max-w-[200px]">
+                              {receiptFile.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {(receiptFile.size / 1024).toFixed(1)} KB
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={clearReceipt}
+                          className="h-8 w-8"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>
                     Cancelar
                   </Button>
-                  <Button onClick={handleAddPayment} disabled={savingPayment}>
-                    {savingPayment && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                    Registrar Pago
+                  <Button onClick={handleAddPayment} disabled={savingPayment || uploadingReceipt}>
+                    {(savingPayment || uploadingReceipt) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    {uploadingReceipt ? 'Subiendo recibo...' : 'Registrar Pago'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -789,6 +913,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     <TableHead>Tipo</TableHead>
                     <TableHead>Método</TableHead>
                     <TableHead>Referencia</TableHead>
+                    <TableHead>Comprobante</TableHead>
                     <TableHead className="text-right">Monto</TableHead>
                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
@@ -810,6 +935,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       </TableCell>
                       <TableCell>
                         {payment.referenceNumber || '-'}
+                      </TableCell>
+                      <TableCell>
+                        {payment.receiptUrl ? (
+                          <a
+                            href={payment.receiptUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            <ImageIcon className="h-4 w-4" />
+                            Ver
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-medium">
                         ${payment.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}

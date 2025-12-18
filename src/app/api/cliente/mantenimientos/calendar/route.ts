@@ -62,16 +62,14 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get client's own maintenances with full details (excluding cancelled)
+    // Get client's own maintenances with full details (including cancelled so client can see rejection reason)
     const clientMaintenances = await prisma.maintenanceRecord.findMany({
       where: {
         clientId,
         scheduledDate: {
           gte: new Date(start),
           lte: new Date(end)
-        },
-        // Never show cancelled maintenances in calendar
-        status: { not: 'CANCELLED' }
+        }
       },
       include: {
         client: {
@@ -104,10 +102,10 @@ export async function GET(request: NextRequest) {
             technician: {
               select: {
                 name: true,
+                phone: true,
               }
             }
-          },
-          take: 1
+          }
         },
         // Include status history for cancelled maintenances (to show rejection reason)
         statusHistory: {
@@ -174,7 +172,7 @@ export async function GET(request: NextRequest) {
         technician: m.technicians[0]?.technician.name || 'Sin asignar',
         solarSystem: m.solarSystem,
         technicians: m.technicians.map(t => ({
-          technician: { name: t.technician.name }
+          technician: { name: t.technician.name, phone: t.technician.phone }
         })),
         // Client address for location
         clientAddress: buildAddress(m.client),

@@ -33,6 +33,46 @@ export async function GET(request: NextRequest) {
 
     const clientId = payload.clientId as string
 
+    // Get today's date
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const fiveDaysFromNow = new Date()
+    fiveDaysFromNow.setDate(fiveDaysFromNow.getDate() + 5)
+
+    // Get all pending scheduled payments for this client
+    const scheduledPayments = await prisma.payment.findMany({
+      where: {
+        order: {
+          clientId,
+        },
+        status: 'PENDING',
+        dueDate: {
+          not: null,
+        },
+      },
+      include: {
+        order: {
+          select: {
+            orderNumber: true,
+            financingMonths: true,
+          },
+        },
+      },
+      orderBy: {
+        dueDate: 'asc',
+      },
+    })
+
+    // Separate payments into categories
+    const upcomingPayments = scheduledPayments.filter(
+      (p) => p.dueDate && p.dueDate <= fiveDaysFromNow && p.dueDate >= today
+    )
+
+    const overduePayments = scheduledPayments.filter(
+      (p) => p.dueDate && p.dueDate < today
+    )
+
     // Get all orders for this client with their payments
     const orders = await prisma.order.findMany({
       where: {
@@ -57,6 +97,10 @@ export async function GET(request: NextRequest) {
             paymentDate: true,
             referenceNumber: true,
             notes: true,
+            status: true,
+            dueDate: true,
+            installmentNumber: true,
+            paidAt: true,
           },
           orderBy: {
             paymentDate: 'desc'
@@ -88,6 +132,12 @@ export async function GET(request: NextRequest) {
       }))
     ).sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
 
+    // Calculate totals for scheduled payments
+    const totalScheduledOverdue = overduePayments.reduce(
+      (sum, p) => sum + Number(p.amount),
+      0
+    )
+
     return NextResponse.json({
       success: true,
       data: {
@@ -99,7 +149,41 @@ export async function GET(request: NextRequest) {
           paidOrders,
           partialOrders,
           pendingOrders,
+          // Scheduled payments info
+          upcomingPaymentsCount: upcomingPayments.length,
+          overduePaymentsCount: overduePayments.length,
+          totalScheduledOverdue,
         },
+        // Upcoming payments (next 5 days) - for notifications
+        upcomingPayments: upcomingPayments.map((p) => ({
+          id: p.id,
+          amount: Number(p.amount),
+          dueDate: p.dueDate,
+          installmentNumber: p.installmentNumber,
+          totalInstallments: p.order.financingMonths,
+          orderNumber: p.order.orderNumber,
+          notes: p.notes,
+          daysUntilDue: p.dueDate
+            ? Math.ceil(
+                (p.dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+              )
+            : null,
+        })),
+        // Overdue payments
+        overduePayments: overduePayments.map((p) => ({
+          id: p.id,
+          amount: Number(p.amount),
+          dueDate: p.dueDate,
+          installmentNumber: p.installmentNumber,
+          totalInstallments: p.order.financingMonths,
+          orderNumber: p.order.orderNumber,
+          notes: p.notes,
+          daysOverdue: p.dueDate
+            ? Math.ceil(
+                (today.getTime() - p.dueDate.getTime()) / (1000 * 60 * 60 * 24)
+              )
+            : null,
+        })),
         orders: orders.map(order => ({
           ...order,
           total: Number(order.total),

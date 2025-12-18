@@ -103,6 +103,12 @@ async function fetchLiveGrowattData(username: string, password: string) {
   const plantsData = plantsResult.back?.data || []
   const totalData = plantsResult.back?.totalData || {}
 
+  // Debug: Log the first plant data to see available fields
+  if (plantsData.length > 0) {
+    console.log('[Cliente Sistema] First plant data fields:', JSON.stringify(plantsData[0], null, 2))
+    console.log('[Cliente Sistema] Total data fields:', JSON.stringify(totalData, null, 2))
+  }
+
   // Parse totals from Growatt (aggregated across all plants)
   const totalTodayEnergy = parseFloat(totalData.todayEnergySum?.replace(/[^\d.-]/g, '')) || 0
   let totalEnergy = parseFloat(totalData.totalEnergySum?.replace(/[^\d.-]/g, '')) || 0
@@ -129,9 +135,27 @@ async function fetchLiveGrowattData(username: string, password: string) {
   // This matches the admin panel behavior
   const hasValidData = plantsData.length > 0 && totalEnergy > 0
 
+  // Try different field names for current power
+  // Growatt API might use: currentPower, pac, power, nominalPower
+  let totalCurrentPowerFromPlants = 0
+  for (const plant of plantsData) {
+    const power = parseFloat(plant.currentPower) ||
+                  parseFloat(plant.pac) ||
+                  parseFloat(plant.power) ||
+                  parseFloat(plant.nominalPower) || 0
+    totalCurrentPowerFromPlants += power
+  }
+
+  // Also check totalData for current power
+  const currentPowerFromTotals = parseFloat(totalData.currentPowerSum?.replace(/[^\d.-]/g, '')) ||
+                                  parseFloat(totalData.pSum?.replace(/[^\d.-]/g, '')) ||
+                                  totalCurrentPower
+
+  const finalCurrentPower = totalCurrentPowerFromPlants || currentPowerFromTotals || totalCurrentPower
+
   return {
     status: hasValidData ? 'online' : 'offline',
-    currentPower: totalCurrentPower,
+    currentPower: finalCurrentPower,
     dailyGeneration: totalTodayEnergy,
     monthlyGeneration: 0, // Growatt doesn't provide this in totals
     totalGeneration: totalEnergy,
@@ -143,7 +167,15 @@ async function fetchLiveGrowattData(username: string, password: string) {
       totalEnergy: parseFloat(p.totalEnergy) || 0,
       status: p.status === '1' ? 'online' : 'offline'
     })),
-    lastUpdate: new Date().toISOString()
+    lastUpdate: new Date().toISOString(),
+    // Debug info - remove later
+    _debug: {
+      plantFields: plantsData[0] ? Object.keys(plantsData[0]) : [],
+      totalDataFields: Object.keys(totalData),
+      rawCurrentPower: plantsData[0]?.currentPower,
+      rawPac: plantsData[0]?.pac,
+      rawPower: plantsData[0]?.power
+    }
   }
 }
 

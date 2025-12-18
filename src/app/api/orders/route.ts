@@ -278,6 +278,13 @@ export async function POST(request: NextRequest) {
     const depositPercentage = data.depositPercentage ? Number(data.depositPercentage) : 50
     const depositAmount = data.depositAmount ? Number(data.depositAmount) : (depositRequired ? total * depositPercentage / 100 : null)
 
+    // Calculate financing fields
+    const financingEnabled = data.financingEnabled || false
+    const financingMonths = data.financingMonths ? Number(data.financingMonths) : null
+    const interestRate = data.interestRate ? Number(data.interestRate) : null
+    const interestAmount = data.interestAmount ? Number(data.interestAmount) : null
+    const monthlyPayment = data.monthlyPayment ? Number(data.monthlyPayment) : null
+
     // Calculate initial payment amount if provided
     const initialPaymentAmount = data.initialPayment ? Number(data.initialPayment.amount) : 0
     const amountPaid = initialPaymentAmount
@@ -306,6 +313,12 @@ export async function POST(request: NextRequest) {
         amountPaid,
         balanceDue,
         paymentStatus,
+        // Financing fields
+        financingEnabled,
+        financingMonths: financingEnabled ? financingMonths : null,
+        interestRate: financingEnabled ? interestRate : null,
+        interestAmount: financingEnabled ? interestAmount : null,
+        monthlyPayment: financingEnabled ? monthlyPayment : null,
         shippingAddress: data.shippingAddress || null,
         notes: data.notes || null,
         createdBy: prismaUser?.id || null,
@@ -341,7 +354,36 @@ export async function POST(request: NextRequest) {
           referenceNumber: data.initialPayment.referenceNumber || null,
           notes: data.initialPayment.notes || null,
           receivedById: prismaUser?.id || null,
+          status: 'PAID',
+          paidAt: new Date(),
         }
+      })
+    }
+
+    // Create scheduled installment payments if financing is enabled and order is CONFIRMED
+    if (financingEnabled && monthlyPayment && financingMonths && orderStatus === 'CONFIRMED') {
+      const installmentPayments = []
+      const startDate = new Date()
+
+      for (let i = 1; i <= financingMonths; i++) {
+        // Calculate due date (same day of each following month)
+        const dueDate = new Date(startDate)
+        dueDate.setMonth(dueDate.getMonth() + i)
+
+        installmentPayments.push({
+          orderId: order.id,
+          amount: monthlyPayment,
+          paymentType: 'INSTALLMENT',
+          status: 'PENDING',
+          dueDate,
+          installmentNumber: i,
+          notes: `Cuota ${i} de ${financingMonths}`,
+        })
+      }
+
+      // Create all installment payments
+      await prisma.payment.createMany({
+        data: installmentPayments
       })
     }
 
@@ -364,6 +406,9 @@ export async function POST(request: NextRequest) {
     if (data.initialPayment && initialPaymentAmount > 0) {
       message += `. Pago de $${initialPaymentAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} registrado`
     }
+    if (financingEnabled && monthlyPayment && financingMonths && orderStatus === 'CONFIRMED') {
+      message += `. ${financingMonths} pagos mensuales de $${monthlyPayment.toLocaleString('es-MX', { minimumFractionDigits: 2 })} programados`
+    }
 
     return NextResponse.json({
       success: true,
@@ -376,6 +421,9 @@ export async function POST(request: NextRequest) {
         balanceDue: Number(order.balanceDue),
         depositAmount: order.depositAmount ? Number(order.depositAmount) : null,
         depositPercentage: order.depositPercentage ? Number(order.depositPercentage) : null,
+        interestRate: order.interestRate ? Number(order.interestRate) : null,
+        interestAmount: order.interestAmount ? Number(order.interestAmount) : null,
+        monthlyPayment: order.monthlyPayment ? Number(order.monthlyPayment) : null,
       },
       inventoryDeduction,
       message

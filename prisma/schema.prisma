@@ -53,6 +53,7 @@ model User {
   emailVerified DateTime?
   password      String?   // Hashed password for email/password auth
   image         String?
+  phone         String?   // Teléfono del usuario (técnico, admin, etc.)
   role          UserRole  @default(CLIENT)
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
@@ -331,6 +332,7 @@ model InventoryItem {
   quantity      Int
   serialNumber  String?
   invoiceNumber String?
+  invoiceUrl    String?   // URL del archivo de factura
   purchaseDate  DateTime?
   supplier      String?
   unitCost      Decimal?  @db.Decimal(10, 2)
@@ -402,6 +404,13 @@ model Order {
   balanceDue         Decimal? @db.Decimal(10, 2)
   paymentStatus      String   @default("PENDING") // PENDING, PARTIAL, PAID, REFUNDED
 
+  // Financing tracking
+  financingEnabled   Boolean  @default(false)
+  financingMonths    Int?
+  interestRate       Decimal? @db.Decimal(5, 2)
+  interestAmount     Decimal? @db.Decimal(10, 2)
+  monthlyPayment     Decimal? @db.Decimal(10, 2)
+
   // Shipping
   shippingAddress String?
   notes          String?
@@ -444,15 +453,23 @@ model OrderItem {
 
 // Payment Management
 model Payment {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   orderId         String
-  amount          Decimal  @db.Decimal(10, 2)
-  paymentType     String   @default("PARTIAL") // DEPOSIT, PARTIAL, FINAL, REFUND
-  paymentMethod   String?  // CASH, TRANSFER, CARD, CHECK
-  paymentDate     DateTime @default(now())
+  amount          Decimal   @db.Decimal(10, 2)
+  paymentType     String    @default("PARTIAL") // DEPOSIT, PARTIAL, FINAL, REFUND, INSTALLMENT
+  paymentMethod   String?   // CASH, TRANSFER, CARD, CHECK
+  paymentDate     DateTime  @default(now())
   referenceNumber String?
   notes           String?
   receivedById    String?
+
+  // Scheduled payment fields (for financing)
+  status          String    @default("PENDING") // PENDING, PAID, OVERDUE, CANCELLED
+  dueDate         DateTime? // Fecha de vencimiento para pagos programados
+  installmentNumber Int?    // Número de cuota (1, 2, 3, etc.)
+  paidAt          DateTime? // Fecha en que se pagó realmente
+  receiptUrl      String?   // URL del comprobante/recibo de pago
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -461,6 +478,8 @@ model Payment {
 
   @@index([orderId])
   @@index([paymentDate])
+  @@index([dueDate])
+  @@index([status])
   @@map("payments")
 }
 
