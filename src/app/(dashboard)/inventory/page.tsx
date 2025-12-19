@@ -75,6 +75,7 @@ interface NewProductData {
   barcode: string
   unitPrice: string
   categoryId: string
+  subCategoryId: string
 }
 
 interface Location {
@@ -90,7 +91,7 @@ interface Product {
   model: string | null
   barcode: string | null
   totalStock: number
-  category: { name: string } | null
+  category: { id: string; name: string } | null
 }
 
 interface InventoryItem {
@@ -167,7 +168,6 @@ export default function InventoryPage() {
   const [exitSuccess, setExitSuccess] = useState<string | null>(null)
   const [exitError, setExitError] = useState<string | null>(null)
   const exitBarcodeInputRef = useRef<HTMLInputElement>(null)
-  const barcodeInputRef = useRef<HTMLInputElement>(null)
 
   const [exitFormData, setExitFormData] = useState<ExitFormData>({
     barcode: '',
@@ -198,7 +198,8 @@ export default function InventoryPage() {
     description: '',
     barcode: '',
     unitPrice: '',
-    categoryId: ''
+    categoryId: '',
+    subCategoryId: ''
   })
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
   const [invoicePreview, setInvoicePreview] = useState<string | null>(null)
@@ -361,7 +362,8 @@ export default function InventoryPage() {
       description: '',
       barcode: '',
       unitPrice: '',
-      categoryId: ''
+      categoryId: '',
+      subCategoryId: ''
     })
     setIsNewProduct(false)
     setInvoiceFile(null)
@@ -432,6 +434,12 @@ export default function InventoryPage() {
 
     if (!entryFormData.locationId || entryFormData.quantity <= 0) {
       setEntryError('Ubicación y cantidad son requeridos')
+      return
+    }
+
+    // Validar código de barras para Paneles e Inversores
+    if (requiresBarcode() && !entryFormData.serialNumber.trim()) {
+      setEntryError('El código de barras es requerido para Paneles e Inversores')
       return
     }
 
@@ -546,6 +554,38 @@ export default function InventoryPage() {
       'RETURN': 'Devolución'
     }
     return types[type] || type
+  }
+
+  // Palabras clave de categorías que requieren código de barras OBLIGATORIO
+  const CATEGORIES_BARCODE_REQUIRED = ['Paneles', 'Inversores']
+  // Palabras clave de categorías que tienen código de barras OPCIONAL
+  const CATEGORIES_BARCODE_OPTIONAL = ['Calentadores']
+  // Todas las palabras clave de categorías que muestran el campo de código de barras
+  const CATEGORIES_WITH_BARCODE = [...CATEGORIES_BARCODE_REQUIRED, ...CATEGORIES_BARCODE_OPTIONAL]
+
+  // Obtener el nombre de la categoría actual
+  const getCurrentCategoryName = (): string | null => {
+    if (isNewProduct) {
+      const selectedCategory = categories.find((cat: any) => cat.id === newProductData.categoryId)
+      return selectedCategory?.name || null
+    } else {
+      const selectedProduct = products.find((p: Product) => p.id === entryFormData.productId)
+      return selectedProduct?.category?.name || null
+    }
+  }
+
+  // Verificar si la categoría muestra el campo de código de barras (busca si el nombre CONTIENE alguna palabra clave)
+  const showsBarcodeField = (): boolean => {
+    const categoryName = getCurrentCategoryName()
+    if (!categoryName) return false
+    return CATEGORIES_WITH_BARCODE.some(keyword => categoryName.toLowerCase().includes(keyword.toLowerCase()))
+  }
+
+  // Verificar si el código de barras es obligatorio (busca si el nombre CONTIENE alguna palabra clave)
+  const requiresBarcode = (): boolean => {
+    const categoryName = getCurrentCategoryName()
+    if (!categoryName) return false
+    return CATEGORIES_BARCODE_REQUIRED.some(keyword => categoryName.toLowerCase().includes(keyword.toLowerCase()))
   }
 
   if (loading) {
@@ -813,44 +853,47 @@ export default function InventoryPage() {
                 </div>
 
                 {!isNewProduct ? (
-                  <Select
-                    value={entryFormData.productId}
-                    onValueChange={(v) => setEntryFormData(prev => ({ ...prev, productId: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar producto" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.map((p: Product) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name} {p.brand && `- ${p.brand}`} {p.model && `(${p.model})`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-4">
+                    <Select
+                      value={entryFormData.productId}
+                      onValueChange={(v) => setEntryFormData(prev => ({ ...prev, productId: v }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar producto" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {products.map((p: Product) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name} {p.brand && `- ${p.brand}`} {p.model && `(${p.model})`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    {/* Código de barras para producto existente */}
+                    {showsBarcodeField() && (
+                      <div className="space-y-2">
+                        <Label htmlFor="entry-serial-existing" className="flex items-center gap-2">
+                          <ScanBarcode className="h-4 w-4" />
+                          Código de Barras {requiresBarcode() && '*'}
+                        </Label>
+                        <Input
+                          id="entry-serial-existing"
+                          value={entryFormData.serialNumber}
+                          onChange={(e) => setEntryFormData(prev => ({ ...prev, serialNumber: e.target.value }))}
+                          placeholder="Escanea o ingresa el código de barras"
+                          className="font-mono"
+                        />
+                        {entryFormData.serialNumber && (
+                          <div className="flex justify-center p-2 bg-white rounded border mt-2">
+                            <BarcodeDisplay value={entryFormData.serialNumber} width={1.2} height={40} fontSize={10} />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
-                    {/* Barcode */}
-                    <div className="space-y-2">
-                      <Label htmlFor="new-barcode" className="flex items-center gap-2">
-                        <ScanBarcode className="h-4 w-4" />
-                        Código de Barras
-                      </Label>
-                      <Input
-                        ref={barcodeInputRef}
-                        id="new-barcode"
-                        value={newProductData.barcode}
-                        onChange={(e) => setNewProductData(prev => ({ ...prev, barcode: e.target.value }))}
-                        placeholder="Escanea o ingresa el código"
-                        className="font-mono"
-                      />
-                      {newProductData.barcode && (
-                        <div className="flex justify-center p-2 bg-white rounded border">
-                          <BarcodeDisplay value={newProductData.barcode} width={1.2} height={40} fontSize={10} />
-                        </div>
-                      )}
-                    </div>
-
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="new-name">Nombre *</Label>
@@ -865,7 +908,7 @@ export default function InventoryPage() {
                         <Label htmlFor="new-category">Categoría *</Label>
                         <Select
                           value={newProductData.categoryId}
-                          onValueChange={(v) => setNewProductData(prev => ({ ...prev, categoryId: v }))}
+                          onValueChange={(v) => setNewProductData(prev => ({ ...prev, categoryId: v, subCategoryId: '' }))}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Categoría" />
@@ -878,6 +921,31 @@ export default function InventoryPage() {
                         </Select>
                       </div>
                     </div>
+
+                    {/* Subcategoría - solo si la categoría seleccionada tiene subcategorías */}
+                    {newProductData.categoryId && (() => {
+                      const selectedCategory = categories.find((cat: any) => cat.id === newProductData.categoryId)
+                      const subCategories = selectedCategory?.subCategories || []
+                      if (subCategories.length === 0) return null
+                      return (
+                        <div className="space-y-2">
+                          <Label htmlFor="new-subcategory">Subcategoría</Label>
+                          <Select
+                            value={newProductData.subCategoryId}
+                            onValueChange={(v) => setNewProductData(prev => ({ ...prev, subCategoryId: v }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar subcategoría" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {subCategories.map((sub: any) => (
+                                <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )
+                    })()}
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -923,6 +991,28 @@ export default function InventoryPage() {
                         />
                       </div>
                     </div>
+
+                    {/* Código de barras - solo para Paneles, Inversores y Calentadores */}
+                    {showsBarcodeField() && (
+                      <div className="space-y-2">
+                        <Label htmlFor="entry-serial" className="flex items-center gap-2">
+                          <ScanBarcode className="h-4 w-4" />
+                          Código de Barras {requiresBarcode() && '*'}
+                        </Label>
+                        <Input
+                          id="entry-serial"
+                          value={entryFormData.serialNumber}
+                          onChange={(e) => setEntryFormData(prev => ({ ...prev, serialNumber: e.target.value }))}
+                          placeholder="Escanea o ingresa el código de barras"
+                          className="font-mono"
+                        />
+                        {entryFormData.serialNumber && (
+                          <div className="flex justify-center p-2 bg-white rounded border mt-2">
+                            <BarcodeDisplay value={entryFormData.serialNumber} width={1.2} height={40} fontSize={10} />
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="space-y-2">
                       <Label htmlFor="new-description">Descripción</Label>
@@ -1009,28 +1099,15 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                {/* Invoice Number */}
-                <div className="space-y-2">
-                  <Label htmlFor="entry-invoice">Número de Factura</Label>
-                  <Input
-                    id="entry-invoice"
-                    value={entryFormData.invoiceNumber}
-                    onChange={(e) => setEntryFormData(prev => ({ ...prev, invoiceNumber: e.target.value }))}
-                    placeholder="Ej: FAC-001234"
-                  />
-                </div>
-
-                {/* Serial Number */}
-                <div className="space-y-2">
-                  <Label htmlFor="entry-serial">Número de Serie</Label>
-                  <Input
-                    id="entry-serial"
-                    value={entryFormData.serialNumber}
-                    onChange={(e) => setEntryFormData(prev => ({ ...prev, serialNumber: e.target.value }))}
-                    placeholder="Opcional"
-                  />
-                </div>
+              {/* Invoice Number */}
+              <div className="space-y-2">
+                <Label htmlFor="entry-invoice">Número de Factura</Label>
+                <Input
+                  id="entry-invoice"
+                  value={entryFormData.invoiceNumber}
+                  onChange={(e) => setEntryFormData(prev => ({ ...prev, invoiceNumber: e.target.value }))}
+                  placeholder="Ej: FAC-001234"
+                />
               </div>
 
               {/* Invoice Upload */}
@@ -1121,7 +1198,7 @@ export default function InventoryPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={savingEntry || (!isNewProduct && !entryFormData.productId) || (isNewProduct && (!newProductData.name || !newProductData.categoryId)) || !entryFormData.locationId || entryFormData.quantity <= 0}
+                disabled={savingEntry || (!isNewProduct && !entryFormData.productId) || (isNewProduct && (!newProductData.name || !newProductData.categoryId)) || !entryFormData.locationId || entryFormData.quantity <= 0 || (requiresBarcode() && !entryFormData.serialNumber)}
               >
                 {savingEntry ? (
                   <>

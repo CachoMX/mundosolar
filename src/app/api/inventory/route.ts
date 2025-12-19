@@ -133,17 +133,28 @@ export async function GET() {
       }
     }))
 
-    // Get products with low stock (less than 10 units)
-    const lowStockItems = await withRetry(() => prisma.inventoryItem.findMany({
-      where: {
-        quantity: {
-          lt: 10
-        }
-      },
+    // Get products with low stock (less than 10 units TOTAL per product)
+    // First, get all products with their inventory items
+    const productsWithInventory = await withRetry(() => prisma.product.findMany({
+      where: { isActive: true },
       include: {
-        product: true
+        inventoryItems: {
+          select: { quantity: true }
+        }
       }
     }))
+
+    // Calculate total stock per product and filter those with less than 10
+    const lowStockProducts = productsWithInventory.filter(product => {
+      // For products with unique barcodes per unit (Paneles, Inversores), count items
+      // For other products, sum quantities
+      const totalStock = product.inventoryItems.reduce((sum, item) => sum + item.quantity, 0)
+      // Also count individual items (for products where each unit is a separate record)
+      const itemCount = product.inventoryItems.length
+      // Use the larger value to properly count both scenarios
+      const effectiveStock = Math.max(totalStock, itemCount)
+      return effectiveStock > 0 && effectiveStock < 10
+    })
 
     // Get total inventory value
     const inventoryValue = await withRetry(() => prisma.inventoryItem.aggregate({
@@ -213,7 +224,7 @@ export async function GET() {
       data: {
         summary: {
           totalProducts: totalProducts._sum.quantity || 0,
-          lowStock: lowStockItems.length,
+          lowStock: lowStockProducts.length,
           totalValue: inventoryValue._sum.totalCost || 0,
           totalLocations: totalLocations
         },
