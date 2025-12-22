@@ -62,6 +62,7 @@ const navigation: NavigationItem[] = [
 interface MaintenanceCounts {
   scheduled: number
   pendingApproval: number
+  cancelled: number
 }
 
 interface ClientSidebarProps {
@@ -70,7 +71,7 @@ interface ClientSidebarProps {
 
 export function ClientSidebar({ className }: ClientSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
-  const [maintenanceCounts, setMaintenanceCounts] = useState<MaintenanceCounts>({ scheduled: 0, pendingApproval: 0 })
+  const [maintenanceCounts, setMaintenanceCounts] = useState<MaintenanceCounts>({ scheduled: 0, pendingApproval: 0, cancelled: 0 })
   const pathname = usePathname()
 
   // Fetch maintenance counts
@@ -82,7 +83,8 @@ export function ClientSidebar({ className }: ClientSidebarProps) {
         if (result.success) {
           setMaintenanceCounts({
             scheduled: result.data.scheduledThisWeek || 0,
-            pendingApproval: result.data.pendingApproval || 0
+            pendingApproval: result.data.pendingApproval || 0,
+            cancelled: result.data.cancelledUnread || 0
           })
         }
       } catch (error) {
@@ -93,10 +95,20 @@ export function ClientSidebar({ className }: ClientSidebarProps) {
     fetchMaintenanceCounts()
     // Refresh every 5 minutes
     const interval = setInterval(fetchMaintenanceCounts, 5 * 60 * 1000)
-    return () => clearInterval(interval)
+
+    // Listen for custom event to refresh counts immediately
+    const handleRefresh = () => {
+      fetchMaintenanceCounts()
+    }
+    window.addEventListener('refreshMaintenanceCounts', handleRefresh)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('refreshMaintenanceCounts', handleRefresh)
+    }
   }, [])
 
-  const totalMaintenanceAlerts = maintenanceCounts.scheduled + maintenanceCounts.pendingApproval
+  const totalMaintenanceAlerts = maintenanceCounts.scheduled + maintenanceCounts.pendingApproval + maintenanceCounts.cancelled
 
   return (
     <div
@@ -177,11 +189,20 @@ export function ClientSidebar({ className }: ClientSidebarProps) {
                               )}
                               {maintenanceCounts.pendingApproval > 0 && (
                                 <Badge
-                                  variant="destructive"
-                                  className="h-5 px-1.5 text-[10px]"
-                                  title="Pendientes de confirmar"
+                                  variant="default"
+                                  className="h-5 px-1.5 text-[10px] bg-orange-500 hover:bg-orange-600"
+                                  title="Pendientes de aprobación"
                                 >
                                   {maintenanceCounts.pendingApproval}
+                                </Badge>
+                              )}
+                              {maintenanceCounts.cancelled > 0 && (
+                                <Badge
+                                  variant="destructive"
+                                  className="h-5 px-1.5 text-[10px]"
+                                  title="Solicitudes rechazadas"
+                                >
+                                  {maintenanceCounts.cancelled}
                                 </Badge>
                               )}
                             </div>

@@ -11,6 +11,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -118,10 +125,36 @@ export default function MaintenanceDetailPage() {
   const [approving, setApproving] = useState(false)
   const [approvalData, setApprovalData] = useState({
     scheduledDate: '',
-    scheduledTime: '09:00',
+    scheduledHour: '09',
+    scheduledMinute: '00',
+    scheduledPeriod: 'AM' as 'AM' | 'PM',
     technicianIds: [] as string[],
-    notes: ''
+    notes: '',
+    privateNotes: '',
+    rescheduleReason: ''
   })
+  // Track original requested date/time for comparison
+  const [originalRequestedDateTime, setOriginalRequestedDateTime] = useState<{
+    date: string
+    hour: string
+    minute: string
+    period: 'AM' | 'PM'
+  } | null>(null)
+
+  // Availability state for approval modal
+  interface HourAvailability {
+    hour: number
+    displayTime: string
+    isAvailable: boolean
+    availableTechnicians: Array<{
+      technicianId: string
+      technicianName: string
+      isAvailable: boolean
+    }>
+    allBusy: boolean
+  }
+  const [hourlyAvailability, setHourlyAvailability] = useState<HourAvailability[]>([])
+  const [loadingAvailability, setLoadingAvailability] = useState(false)
 
   // Reject modal state
   const [showRejectModal, setShowRejectModal] = useState(false)
@@ -159,6 +192,65 @@ export default function MaintenanceDetailPage() {
       fetchData()
     }
   }, [params.id, fetchData])
+
+  // Fetch technician availability for a given date
+  const fetchAvailability = useCallback(async (date: string) => {
+    if (!date) return
+
+    setLoadingAvailability(true)
+    try {
+      const response = await fetch(`/api/maintenance/availability?date=${date}&excludeMaintenanceId=${params.id}`)
+      const result = await response.json()
+      if (result.success) {
+        setHourlyAvailability(result.data.hourlyAvailability || [])
+      }
+    } catch (err) {
+      console.error('Error fetching availability:', err)
+    } finally {
+      setLoadingAvailability(false)
+    }
+  }, [params.id])
+
+  // Fetch availability when date changes in approval modal
+  useEffect(() => {
+    if (showApprovalModal && approvalData.scheduledDate) {
+      fetchAvailability(approvalData.scheduledDate)
+    }
+  }, [showApprovalModal, approvalData.scheduledDate, fetchAvailability])
+
+  // Clear selected technicians if they become unavailable when changing hour
+  useEffect(() => {
+    if (hourlyAvailability.length === 0 || approvalData.technicianIds.length === 0) return
+
+    // Calculate 24h hour from the selected time
+    let hour24 = parseInt(approvalData.scheduledHour, 10)
+    if (approvalData.scheduledPeriod === 'PM' && hour24 !== 12) {
+      hour24 += 12
+    } else if (approvalData.scheduledPeriod === 'AM' && hour24 === 12) {
+      hour24 = 0
+    }
+
+    // Find availability for this hour
+    const hourAvail = hourlyAvailability.find((h) => h.hour === hour24)
+    if (!hourAvail) return
+
+    // Get available technician IDs
+    const availableTechIds = hourAvail.availableTechnicians
+      .filter((t) => t.isAvailable)
+      .map((t) => t.technicianId)
+
+    // Filter out selected technicians that are no longer available
+    const validTechIds = approvalData.technicianIds.filter((id) =>
+      availableTechIds.includes(id)
+    )
+
+    if (validTechIds.length !== approvalData.technicianIds.length) {
+      setApprovalData((prev) => ({
+        ...prev,
+        technicianIds: validTechIds
+      }))
+    }
+  }, [hourlyAvailability, approvalData.scheduledHour, approvalData.scheduledPeriod, approvalData.technicianIds])
 
   // Handle error - redirect if maintenance not found
   useEffect(() => {
@@ -215,18 +307,61 @@ export default function MaintenanceDetailPage() {
   }
 
   const openApprovalModal = () => {
-    // Pre-fill with preferred date if available
-    const preferredDate = maintenance?.scheduledDate
-      ? new Date(maintenance.scheduledDate).toISOString().split('T')[0]
-      : new Date().toISOString().split('T')[0]
+    // Pre-fill with preferred date and time if available
+    let preferredDate = new Date().toISOString().split('T')[0]
+    let preferredHour = '09'
+    let preferredMinute = '00'
+    let preferredPeriod: 'AM' | 'PM' = 'AM'
+
+    if (maintenance?.scheduledDate) {
+      const scheduledDateObj = new Date(maintenance.scheduledDate)
+      preferredDate = scheduledDateObj.toISOString().split('T')[0]
+
+      // Extract hour, minute, and period from the client's proposed time
+      const hour24 = scheduledDateObj.getHours()
+      const minutes = scheduledDateObj.getMinutes()
+
+      // Convert to 12h format
+      let hour12 = hour24 % 12
+      if (hour12 === 0) hour12 = 12
+      preferredPeriod = hour24 < 12 ? 'AM' : 'PM'
+      preferredHour = String(hour12).padStart(2, '0')
+      preferredMinute = String(minutes).padStart(2, '0')
+
+      // Store original requested date/time for comparison
+      setOriginalRequestedDateTime({
+        date: preferredDate,
+        hour: preferredHour,
+        minute: preferredMinute,
+        period: preferredPeriod
+      })
+    } else {
+      setOriginalRequestedDateTime(null)
+    }
 
     setApprovalData({
       scheduledDate: preferredDate,
-      scheduledTime: '09:00',
+      scheduledHour: preferredHour,
+      scheduledMinute: preferredMinute,
+      scheduledPeriod: preferredPeriod,
       technicianIds: [],
-      notes: ''
+      notes: '',
+      privateNotes: '',
+      rescheduleReason: ''
     })
+    setHourlyAvailability([])
     setShowApprovalModal(true)
+  }
+
+  // Check if the scheduled time differs from the original request
+  const isTimeChanged = () => {
+    if (!originalRequestedDateTime) return false
+    return (
+      approvalData.scheduledDate !== originalRequestedDateTime.date ||
+      approvalData.scheduledHour !== originalRequestedDateTime.hour ||
+      approvalData.scheduledMinute !== originalRequestedDateTime.minute ||
+      approvalData.scheduledPeriod !== originalRequestedDateTime.period
+    )
   }
 
   const handleApprove = async () => {
@@ -235,10 +370,25 @@ export default function MaintenanceDetailPage() {
       return
     }
 
+    // Require reason if time was changed
+    const timeChanged = isTimeChanged()
+    if (timeChanged && !approvalData.rescheduleReason.trim()) {
+      alert('Por favor ingresa el motivo del cambio de horario')
+      return
+    }
+
     setApproving(true)
 
     try {
-      const scheduledDateTimeStr = `${approvalData.scheduledDate}T${approvalData.scheduledTime}:00.000Z`
+      // Convert 12h format to 24h format
+      let hour24 = parseInt(approvalData.scheduledHour, 10)
+      if (approvalData.scheduledPeriod === 'PM' && hour24 !== 12) {
+        hour24 += 12
+      } else if (approvalData.scheduledPeriod === 'AM' && hour24 === 12) {
+        hour24 = 0
+      }
+      const hour24Str = String(hour24).padStart(2, '0')
+      const scheduledDateTimeStr = `${approvalData.scheduledDate}T${hour24Str}:${approvalData.scheduledMinute}:00`
 
       const response = await fetch(`/api/maintenance/${params.id}/status`, {
         method: 'PATCH',
@@ -247,7 +397,9 @@ export default function MaintenanceDetailPage() {
           status: 'SCHEDULED',
           scheduledDate: scheduledDateTimeStr,
           technicianIds: approvalData.technicianIds,
-          notes: approvalData.notes || 'Solicitud aprobada'
+          notes: approvalData.notes || 'Solicitud aprobada',
+          privateNotes: approvalData.privateNotes || undefined,
+          rescheduleReason: timeChanged ? approvalData.rescheduleReason : undefined
         }),
       })
 
@@ -727,7 +879,7 @@ export default function MaintenanceDetailPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="scheduledDate">Fecha *</Label>
                 <Input
@@ -740,54 +892,152 @@ export default function MaintenanceDetailPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="scheduledTime">Hora *</Label>
-                <Input
-                  id="scheduledTime"
-                  type="time"
-                  value={approvalData.scheduledTime}
-                  onChange={(e) => setApprovalData({ ...approvalData, scheduledTime: e.target.value })}
-                  required
-                />
+                <Label>Hora *</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  <Select
+                    value={approvalData.scheduledHour}
+                    onValueChange={(value) => setApprovalData({ ...approvalData, scheduledHour: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Hora" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(approvalData.scheduledPeriod === 'AM'
+                        ? ['07', '08', '09', '10', '11']
+                        : ['12', '01', '02', '03', '04', '05', '06']
+                      ).map((h) => (
+                        <SelectItem key={h} value={h}>
+                          {h}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={approvalData.scheduledMinute}
+                    onValueChange={(value) => setApprovalData({ ...approvalData, scheduledMinute: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Min" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {['00', '15', '30', '45'].map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {m}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={approvalData.scheduledPeriod}
+                    onValueChange={(value) => {
+                      const newPeriod = value as 'AM' | 'PM'
+                      const amHours = ['07', '08', '09', '10', '11']
+                      const pmHours = ['12', '01', '02', '03', '04', '05', '06']
+                      const validHours = newPeriod === 'AM' ? amHours : pmHours
+                      // Reset hour if current hour is not valid for new period
+                      const newHour = validHours.includes(approvalData.scheduledHour)
+                        ? approvalData.scheduledHour
+                        : validHours[0]
+                      setApprovalData({ ...approvalData, scheduledPeriod: newPeriod, scheduledHour: newHour })
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="AM/PM" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AM">AM</SelectItem>
+                      <SelectItem value="PM">PM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {loadingAvailability && (
+                  <p className="text-xs text-muted-foreground">Cargando disponibilidad...</p>
+                )}
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label>Técnicos Asignados</Label>
-              {technicians.length === 0 ? (
-                <div className="text-center py-4 text-muted-foreground border rounded-lg">
-                  <p className="text-sm">No hay técnicos registrados.</p>
-                </div>
-              ) : (
-                <div className="border rounded-lg p-3 space-y-2 max-h-40 overflow-y-auto">
-                  {technicians.map((tech) => (
-                    <div key={tech.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`approval-tech-${tech.id}`}
-                        checked={approvalData.technicianIds.includes(tech.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setApprovalData({
-                              ...approvalData,
-                              technicianIds: [...approvalData.technicianIds, tech.id]
-                            })
-                          } else {
-                            setApprovalData({
-                              ...approvalData,
-                              technicianIds: approvalData.technicianIds.filter(id => id !== tech.id)
-                            })
-                          }
-                        }}
-                      />
-                      <label
-                        htmlFor={`approval-tech-${tech.id}`}
-                        className="text-sm font-medium leading-none cursor-pointer"
-                      >
-                        {tech.name}
-                      </label>
+              <Label>Técnicos Disponibles</Label>
+              {(() => {
+                // Calculate 24h hour from the selected time
+                let hour24 = parseInt(approvalData.scheduledHour, 10)
+                if (approvalData.scheduledPeriod === 'PM' && hour24 !== 12) {
+                  hour24 += 12
+                } else if (approvalData.scheduledPeriod === 'AM' && hour24 === 12) {
+                  hour24 = 0
+                }
+
+                // Find availability for this hour
+                const hourAvail = hourlyAvailability.find((h) => h.hour === hour24)
+
+                // Get available technicians based on availability data
+                const availableTechIds = hourAvail
+                  ? hourAvail.availableTechnicians
+                      .filter((t) => t.isAvailable)
+                      .map((t) => t.technicianId)
+                  : technicians.map((t) => t.id) // If no availability data yet, show all
+
+                // Filter technicians to only show available ones
+                const availableTechnicians = technicians.filter((t) =>
+                  availableTechIds.includes(t.id)
+                )
+
+                if (technicians.length === 0) {
+                  return (
+                    <div className="text-center py-4 text-muted-foreground border rounded-lg">
+                      <p className="text-sm">No hay técnicos registrados.</p>
                     </div>
-                  ))}
-                </div>
-              )}
+                  )
+                }
+
+                if (availableTechnicians.length === 0 && hourlyAvailability.length > 0) {
+                  return (
+                    <div className="text-center py-4 text-amber-600 border border-amber-200 bg-amber-50 rounded-lg">
+                      <p className="text-sm font-medium">No hay técnicos disponibles a esta hora</p>
+                      <p className="text-xs mt-1">Por favor selecciona otra hora o fecha</p>
+                    </div>
+                  )
+                }
+
+                return (
+                  <>
+                    <div className="border rounded-lg p-3 space-y-2 max-h-40 overflow-y-auto">
+                      {availableTechnicians.map((tech) => (
+                        <div key={tech.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`approval-tech-${tech.id}`}
+                            checked={approvalData.technicianIds.includes(tech.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setApprovalData({
+                                  ...approvalData,
+                                  technicianIds: [...approvalData.technicianIds, tech.id]
+                                })
+                              } else {
+                                setApprovalData({
+                                  ...approvalData,
+                                  technicianIds: approvalData.technicianIds.filter(id => id !== tech.id)
+                                })
+                              }
+                            }}
+                          />
+                          <label
+                            htmlFor={`approval-tech-${tech.id}`}
+                            className="text-sm font-medium leading-none cursor-pointer"
+                          >
+                            {tech.name}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                    {availableTechnicians.length < technicians.length && hourlyAvailability.length > 0 && (
+                      <p className="text-xs text-amber-600">
+                        {technicians.length - availableTechnicians.length} técnico(s) no disponible(s) a esta hora
+                      </p>
+                    )}
+                  </>
+                )
+              })()}
               {approvalData.technicianIds.length > 0 && (
                 <p className="text-xs text-muted-foreground">
                   {approvalData.technicianIds.length} técnico(s) seleccionado(s)
@@ -795,15 +1045,53 @@ export default function MaintenanceDetailPage() {
               )}
             </div>
 
+            {/* Show reschedule reason field when time is changed */}
+            {isTimeChanged() && (
+              <div className="space-y-2 border border-amber-300 bg-amber-50 rounded-lg p-3">
+                <div className="flex items-center gap-2 text-amber-700 mb-2">
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-sm font-medium">Cambio de horario detectado</span>
+                </div>
+                <div className="text-xs text-amber-600 mb-2">
+                  <p>Solicitado: {originalRequestedDateTime?.date} a las {originalRequestedDateTime?.hour}:{originalRequestedDateTime?.minute} {originalRequestedDateTime?.period}</p>
+                  <p>Programado: {approvalData.scheduledDate} a las {approvalData.scheduledHour}:{approvalData.scheduledMinute} {approvalData.scheduledPeriod}</p>
+                </div>
+                <Label htmlFor="rescheduleReason" className="text-amber-800">Motivo del cambio de horario *</Label>
+                <Textarea
+                  id="rescheduleReason"
+                  placeholder="Explica al cliente por qué se cambió el horario solicitado..."
+                  value={approvalData.rescheduleReason}
+                  onChange={(e) => setApprovalData({ ...approvalData, rescheduleReason: e.target.value })}
+                  rows={2}
+                  className="border-amber-300 focus:border-amber-500"
+                  required
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label htmlFor="notes">Notas (opcional)</Label>
+              <Label htmlFor="notes">Notas para el cliente (opcional)</Label>
               <Textarea
                 id="notes"
-                placeholder="Notas adicionales para el técnico o el cliente..."
+                placeholder="Notas visibles para el cliente..."
                 value={approvalData.notes}
                 onChange={(e) => setApprovalData({ ...approvalData, notes: e.target.value })}
-                rows={3}
+                rows={2}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="privateNotes">Notas privadas (opcional)</Label>
+              <Textarea
+                id="privateNotes"
+                placeholder="Notas solo visibles para administradores y técnicos..."
+                value={approvalData.privateNotes}
+                onChange={(e) => setApprovalData({ ...approvalData, privateNotes: e.target.value })}
+                rows={2}
+              />
+              <p className="text-xs text-muted-foreground">
+                Estas notas no serán visibles para el cliente
+              </p>
             </div>
           </div>
 

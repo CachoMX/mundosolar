@@ -88,13 +88,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Create maintenance request with PENDING_APPROVAL status
-    // For preferred date, add time component to avoid timezone issues
+    // Parse the preferred date/time from the client
     let scheduledDateValue = null
     if (preferredDate) {
-      // If it's just a date string (YYYY-MM-DD), add noon UTC to keep the correct day
+      // If it includes time (e.g., "2025-12-26T15:00:00"), parse as local time
+      // If it's just a date (YYYY-MM-DD), default to noon local time
       scheduledDateValue = preferredDate.includes('T')
         ? new Date(preferredDate)
-        : new Date(`${preferredDate}T12:00:00.000Z`)
+        : new Date(`${preferredDate}T12:00:00`)
     }
 
     // Get client info for notification

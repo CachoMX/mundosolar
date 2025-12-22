@@ -80,6 +80,15 @@ interface SolarSystem {
   capacity: number | null
 }
 
+interface HourAvailability {
+  hour: number
+  hour12: string
+  period: 'AM' | 'PM'
+  displayTime: string
+  isAvailable: boolean
+  allBusy: boolean
+}
+
 interface MaintenanceData {
   metrics: DashboardMetrics
   events: CalendarEvent[]
@@ -149,6 +158,8 @@ export default function MantenimientosPage() {
   const [solarSystems, setSolarSystems] = useState<SolarSystem[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [requestMessage, setRequestMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const [hourlyAvailability, setHourlyAvailability] = useState<HourAvailability[]>([])
+  const [loadingAvailability, setLoadingAvailability] = useState(false)
 
   // Rejection modal state
   const [showRejectionModal, setShowRejectionModal] = useState(false)
@@ -180,9 +191,59 @@ export default function MantenimientosPage() {
     // Load dismissed rejections from localStorage
     const dismissed = localStorage.getItem('dismissedRejections')
     if (dismissed) {
-      setDismissedRejections(JSON.parse(dismissed))
+      const dismissedIds = JSON.parse(dismissed)
+      setDismissedRejections(dismissedIds)
+
+      // Sync: mark notifications as read for previously dismissed items
+      // This handles cases where localStorage has dismissals but notifications weren't marked as read
+      if (dismissedIds.length > 0) {
+        dismissedIds.forEach(async (id: string) => {
+          try {
+            await fetch('/api/cliente/notificaciones/marcar-leida', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ maintenanceId: id })
+            })
+          } catch (error) {
+            // Silent fail for sync
+          }
+        })
+        // Refresh sidebar counts after syncing
+        window.dispatchEvent(new CustomEvent('refreshMaintenanceCounts'))
+      }
     }
   }, [])
+
+  // Sync cancelled notifications with visible calendar events
+  // This ensures orphaned notifications (where maintenance was deleted) are also marked as read
+  useEffect(() => {
+    if (loading || events.length === 0) return
+
+    const syncCancelledNotifications = async () => {
+      // Get cancelled events that are visible (not dismissed)
+      const visibleCancelledEvents = events.filter(
+        event => event.resource?.status === 'CANCELLED' && !dismissedRejections.includes(event.id)
+      )
+
+      // If there are no visible cancelled events, mark ALL cancelled notifications as read
+      // This handles orphaned notifications where the maintenance was deleted
+      if (visibleCancelledEvents.length === 0) {
+        try {
+          await fetch('/api/cliente/notificaciones/marcar-leida', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ markAllCancelled: true })
+          })
+          // Refresh sidebar counts
+          window.dispatchEvent(new CustomEvent('refreshMaintenanceCounts'))
+        } catch (error) {
+          // Silent fail
+        }
+      }
+    }
+
+    syncCancelledNotifications()
+  }, [loading, events, dismissedRejections])
 
   // Handle selected maintenance from URL params
   useEffect(() => {
@@ -208,6 +269,42 @@ export default function MantenimientosPage() {
     }
   }
 
+  const loadAvailability = async (dateStr: string) => {
+    if (!dateStr) {
+      setHourlyAvailability([])
+      return
+    }
+    try {
+      setLoadingAvailability(true)
+      // Use the client-specific availability endpoint
+      const response = await fetch(`/api/cliente/mantenimientos/disponibilidad?date=${dateStr}`)
+      const data = await response.json()
+      if (data.success) {
+        setHourlyAvailability(data.data.hourlyAvailability)
+      }
+    } catch (error) {
+      console.error('Error loading availability:', error)
+    } finally {
+      setLoadingAvailability(false)
+    }
+  }
+
+  // Get available hours for the selected period
+  const getAvailableHoursForPeriod = (period: 'AM' | 'PM') => {
+    if (hourlyAvailability.length === 0) {
+      // Default hours if no availability data yet
+      if (period === 'AM') {
+        return ['07', '08', '09', '10', '11']
+      } else {
+        return ['12', '01', '02', '03', '04', '05', '06']
+      }
+    }
+
+    return hourlyAvailability
+      .filter(h => !h.allBusy && h.period === period)
+      .map(h => h.hour12.padStart(2, '0'))
+  }
+
   const handleOpenRequestModal = () => {
     loadSolarSystems()
     setFormData({
@@ -220,11 +317,12 @@ export default function MantenimientosPage() {
       preferredMinute: '00',
       preferredPeriod: 'AM'
     })
+    setHourlyAvailability([])
     setRequestMessage(null)
     setShowRequestModal(true)
   }
 
-  const handleEventClick = (event: CalendarEvent) => {
+  const handleEventClick = async (event: CalendarEvent) => {
     // Only handle clicks on own events
     if (event.resource?.isOwn === false) return
 
@@ -234,6 +332,19 @@ export default function MantenimientosPage() {
     if (status === 'CANCELLED') {
       setSelectedRejectedEvent(event)
       setShowRejectionModal(true)
+
+      // Mark the notification as read so the red badge disappears
+      try {
+        await fetch('/api/cliente/notificaciones/marcar-leida', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ maintenanceId: event.id })
+        })
+        // Dispatch event to refresh sidebar counts
+        window.dispatchEvent(new CustomEvent('refreshMaintenanceCounts'))
+      } catch (error) {
+        console.error('Error marking notification as read:', error)
+      }
     }
     // If it's an approved/scheduled event, show details modal
     else if (status === 'SCHEDULED' || status === 'IN_PROGRESS' || status === 'COMPLETED') {
@@ -313,9 +424,10 @@ export default function MantenimientosPage() {
       const timeString = `${hour24.toString().padStart(2, '0')}:${formData.preferredMinute}`
 
       // Combine date and time if date is provided
+      // Don't add Z suffix - let the server interpret it as local time (same as admin form)
       let preferredDateTime = null
       if (formData.preferredDate) {
-        preferredDateTime = `${formData.preferredDate}T${timeString}:00.000Z`
+        preferredDateTime = `${formData.preferredDate}T${timeString}:00`
       }
 
       // Find the plant name for the selected system
@@ -511,60 +623,125 @@ export default function MantenimientosPage() {
                   id="preferredDate"
                   type="date"
                   value={formData.preferredDate}
-                  onChange={(e) => setFormData({ ...formData, preferredDate: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, preferredDate: e.target.value })
+                    loadAvailability(e.target.value)
+                  }}
                   min={new Date().toISOString().split('T')[0]}
                 />
               </div>
 
               <div className="space-y-2">
                 <Label>Hora preferida</Label>
-                <div className="flex gap-2">
-                  {/* Hour selector (1-12) */}
-                  <Select
-                    value={formData.preferredHour}
-                    onValueChange={(value) => setFormData({ ...formData, preferredHour: value })}
-                  >
-                    <SelectTrigger className="w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper" sideOffset={4}>
-                      {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map((hour) => (
-                        <SelectItem key={hour} value={hour}>{hour}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                {loadingAvailability ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Verificando disponibilidad...
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      {/* Hour selector - filtered by availability */}
+                      <Select
+                        value={formData.preferredHour}
+                        onValueChange={(value) => setFormData({ ...formData, preferredHour: value })}
+                      >
+                        <SelectTrigger className="w-20">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent position="popper" sideOffset={4}>
+                          {(() => {
+                            const availableHours = getAvailableHoursForPeriod(formData.preferredPeriod)
 
-                  <span className="flex items-center text-lg">:</span>
+                            if (availableHours.length === 0) {
+                              return (
+                                <SelectItem value="" disabled>
+                                  Sin horas
+                                </SelectItem>
+                              )
+                            }
 
-                  {/* Minute selector (00, 05, 10, ..., 55) */}
-                  <Select
-                    value={formData.preferredMinute}
-                    onValueChange={(value) => setFormData({ ...formData, preferredMinute: value })}
-                  >
-                    <SelectTrigger className="w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper" sideOffset={4}>
-                      {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map((minute) => (
-                        <SelectItem key={minute} value={minute}>{minute}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                            return availableHours.map((hour) => (
+                              <SelectItem key={hour} value={hour}>{hour}</SelectItem>
+                            ))
+                          })()}
+                        </SelectContent>
+                      </Select>
 
-                  {/* AM/PM selector */}
-                  <Select
-                    value={formData.preferredPeriod}
-                    onValueChange={(value) => setFormData({ ...formData, preferredPeriod: value as 'AM' | 'PM' })}
-                  >
-                    <SelectTrigger className="w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper" sideOffset={4}>
-                      <SelectItem value="AM">AM</SelectItem>
-                      <SelectItem value="PM">PM</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                      <span className="flex items-center text-lg">:</span>
+
+                      {/* Minute selector (00, 05, 10, ..., 55) */}
+                      <Select
+                        value={formData.preferredMinute}
+                        onValueChange={(value) => setFormData({ ...formData, preferredMinute: value })}
+                      >
+                        <SelectTrigger className="w-20">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent position="popper" sideOffset={4}>
+                          {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map((minute) => (
+                            <SelectItem key={minute} value={minute}>{minute}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {/* AM/PM selector - filtered by available hours */}
+                      <Select
+                        value={formData.preferredPeriod}
+                        onValueChange={(value) => {
+                          const newPeriod = value as 'AM' | 'PM'
+                          const availableHours = getAvailableHoursForPeriod(newPeriod)
+                          const newHour = availableHours.includes(formData.preferredHour)
+                            ? formData.preferredHour
+                            : availableHours[0] || '09'
+                          setFormData({ ...formData, preferredPeriod: newPeriod, preferredHour: newHour })
+                        }}
+                      >
+                        <SelectTrigger className="w-20">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent position="popper" sideOffset={4}>
+                          {(() => {
+                            const hasAMAvailable = hourlyAvailability.some(h => h.period === 'AM' && !h.allBusy) || hourlyAvailability.length === 0
+                            const hasPMAvailable = hourlyAvailability.some(h => h.period === 'PM' && !h.allBusy) || hourlyAvailability.length === 0
+
+                            return (
+                              <>
+                                {hasAMAvailable && <SelectItem value="AM">AM</SelectItem>}
+                                {hasPMAvailable && <SelectItem value="PM">PM</SelectItem>}
+                              </>
+                            )
+                          })()}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Show availability info */}
+                    {formData.preferredDate && hourlyAvailability.length > 0 && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {(() => {
+                          const availableInAM = hourlyAvailability.filter(h => h.period === 'AM' && !h.allBusy).length
+                          const availableInPM = hourlyAvailability.filter(h => h.period === 'PM' && !h.allBusy).length
+                          const total = availableInAM + availableInPM
+
+                          if (total === 0) {
+                            return (
+                              <span className="text-amber-600">
+                                No hay horarios disponibles para esta fecha
+                              </span>
+                            )
+                          }
+
+                          return (
+                            <span className="text-green-600">
+                              {total} horario(s) disponible(s) para esta fecha
+                            </span>
+                          )
+                        })()}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
               <div className="space-y-2">

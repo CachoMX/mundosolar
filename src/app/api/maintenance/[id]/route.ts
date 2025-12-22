@@ -161,7 +161,8 @@ export async function PATCH(
       workPerformed,
       laborHours,
       cost,
-      technicianIds
+      technicianIds,
+      rescheduleReason
     } = body
 
     // If technicianIds is provided, update the technician assignments
@@ -182,6 +183,17 @@ export async function PATCH(
         }))
       }
     }
+
+    // Get the current maintenance to check if date changed
+    const currentMaintenance = await withRetry(() => prisma.maintenanceRecord.findUnique({
+      where: { id: params.id },
+      select: {
+        scheduledDate: true,
+        clientId: true,
+        title: true,
+        status: true
+      }
+    }))
 
     const maintenance = await withRetry(() => prisma.maintenanceRecord.update({
       where: { id: params.id },
@@ -205,6 +217,51 @@ export async function PATCH(
         }
       }
     }))
+
+    // Send notification to client if scheduled date changed and maintenance is already approved
+    if (scheduledDate && currentMaintenance &&
+        currentMaintenance.status !== 'PENDING_APPROVAL' &&
+        currentMaintenance.status !== 'CANCELLED' &&
+        currentMaintenance.status !== 'COMPLETED') {
+
+      const oldDate = currentMaintenance.scheduledDate
+      const newDate = new Date(scheduledDate)
+
+      // Check if the date actually changed (compare timestamps)
+      const dateChanged = !oldDate || oldDate.getTime() !== newDate.getTime()
+
+      if (dateChanged && currentMaintenance.clientId) {
+        try {
+          // Format the new date for display
+          const formattedDate = newDate.toLocaleDateString('es-MX', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+
+          await prisma.notification.create({
+            data: {
+              clientId: currentMaintenance.clientId,
+              type: 'maintenance_rescheduled',
+              title: 'Mantenimiento Reprogramado',
+              message: `Su mantenimiento "${currentMaintenance.title}" ha sido reprogramado para el ${formattedDate}`,
+              data: {
+                maintenanceId: params.id,
+                newScheduledDate: scheduledDate,
+                oldScheduledDate: oldDate?.toISOString() || null,
+                rescheduleReason: rescheduleReason || null
+              }
+            }
+          })
+        } catch (notifError) {
+          // Log but don't fail the request if notification creation fails
+          console.warn('Could not create notification for date change:', notifError)
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,

@@ -240,7 +240,11 @@ export default function DashboardPage() {
               ) : (
                 <div className="space-y-3">
                   {data.recentOrders.map((order) => (
-                    <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div
+                      key={order.id}
+                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => router.push(`/orders/${order.id}`)}
+                    >
                       <div className="flex-1">
                         <div className="flex items-center space-x-2">
                           <p className="font-medium">{order.orderNumber}</p>

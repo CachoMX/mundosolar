@@ -101,6 +101,15 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Cancelados no vistos (notificaciones de cancelación no leídas)
+    const cancelledUnread = await prisma.notification.count({
+      where: {
+        clientId,
+        type: 'maintenance_cancelled',
+        read: false
+      }
+    })
+
     // Próximos mantenimientos (próximos 14 días) para este cliente
     const upcomingDate = new Date(today)
     upcomingDate.setDate(upcomingDate.getDate() + 14)
@@ -174,6 +183,7 @@ export async function GET(request: NextRequest) {
         overdue,
         completedThisMonth,
         pendingApproval,
+        cancelledUnread,
         upcoming: upcoming.map(item => ({
           ...item,
           technicians: item.technicians.map(t => ({

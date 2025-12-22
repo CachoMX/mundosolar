@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { Sun, Search, User, Settings, LogOut, Bell, Check, X } from 'lucide-react'
+import { Sun, Search, User, Settings, LogOut, Bell, Check, X, ChevronDown, ChevronUp, Clock, Calendar } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
@@ -30,6 +30,11 @@ interface Notification {
     maintenanceId?: string
     clientId?: string
     status?: string
+    timeWasChanged?: boolean
+    originalScheduledDate?: string
+    newScheduledDate?: string
+    oldScheduledDate?: string
+    rescheduleReason?: string
   }
 }
 
@@ -45,6 +50,7 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [expandedNotificationId, setExpandedNotificationId] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
@@ -180,8 +186,50 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
     }
   }
 
-  // Handle notification click - navigate to the relevant page and delete it
-  const handleNotificationClick = async (notification: Notification) => {
+  // Helper function to format date for display
+  const formatScheduledDate = (dateString: string | undefined) => {
+    if (!dateString) return 'No especificada'
+    try {
+      const date = new Date(dateString)
+      return date.toLocaleDateString('es-MX', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    } catch {
+      return 'Fecha inválida'
+    }
+  }
+
+  // Check if notification is a time change notification
+  const isTimeChangeNotification = (notification: Notification) => {
+    return notification.type === 'maintenance_time_changed' ||
+           notification.type === 'maintenance_rescheduled' ||
+           (notification.type === 'maintenance_scheduled' && notification.data?.timeWasChanged)
+  }
+
+  // Handle notification click - expand for time change, navigate otherwise
+  const handleNotificationClick = async (notification: Notification, e: React.MouseEvent) => {
+    // If it's a time change notification, toggle expand instead of navigating
+    if (isTimeChangeNotification(notification)) {
+      e.preventDefault()
+      e.stopPropagation()
+
+      if (expandedNotificationId === notification.id) {
+        setExpandedNotificationId(null)
+      } else {
+        setExpandedNotificationId(notification.id)
+        // Mark as read when expanded
+        if (!notification.read) {
+          markAsRead(notification.id)
+        }
+      }
+      return
+    }
+
     // Delete notification when clicked (it will disappear)
     deleteNotification(notification.id)
 
@@ -192,6 +240,18 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
         router.push('/cliente/mantenimientos')
       } else {
         // Admin goes to specific maintenance detail
+        router.push(`/maintenance/${notification.data.maintenanceId}`)
+      }
+    }
+  }
+
+  // Handle "Ver mantenimiento" button click within expanded notification
+  const handleViewMaintenance = (notification: Notification) => {
+    deleteNotification(notification.id)
+    if (notification.data?.maintenanceId) {
+      if (isClientPortal) {
+        router.push('/cliente/mantenimientos')
+      } else {
         router.push(`/maintenance/${notification.data.maintenanceId}`)
       }
     }
@@ -297,45 +357,111 @@ export function Navbar({ isClientPortal = false }: NavbarProps) {
                     <p>No tienes notificaciones</p>
                   </div>
                 ) : (
-                  notifications.map((notification) => (
-                    <DropdownMenuItem
-                      key={notification.id}
-                      className={`flex-col items-start p-3 cursor-pointer ${
-                        !notification.read ? 'bg-blue-50' : ''
-                      }`}
-                      onClick={() => handleNotificationClick(notification)}
-                    >
-                      <div className="flex items-start justify-between w-full gap-2">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{notification.title}</p>
-                          <p className="text-xs text-gray-600 mt-1">
-                            {notification.message}
-                          </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            {formatDistanceToNow(new Date(notification.createdAt), {
-                              addSuffix: true,
-                              locale: es,
-                            })}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          {!notification.read && (
-                            <div className="h-2 w-2 rounded-full bg-blue-600 mt-1"></div>
-                          )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              deleteNotification(notification.id)
-                            }}
-                            className="p-1 hover:bg-gray-200 rounded-full transition-colors"
-                            title="Eliminar notificación"
-                          >
-                            <X className="h-3 w-3 text-gray-500 hover:text-gray-700" />
-                          </button>
+                  notifications.map((notification) => {
+                    const isTimeChange = isTimeChangeNotification(notification)
+                    const isExpanded = expandedNotificationId === notification.id
+
+                    return (
+                      <div
+                        key={notification.id}
+                        className={`p-3 cursor-pointer border-b last:border-b-0 transition-colors ${
+                          !notification.read ? 'bg-blue-50' : 'bg-white'
+                        } ${isTimeChange ? 'hover:bg-amber-50' : 'hover:bg-gray-50'}`}
+                        onClick={(e) => handleNotificationClick(notification, e)}
+                      >
+                        <div className="flex items-start justify-between w-full gap-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-sm">{notification.title}</p>
+                              {isTimeChange && (
+                                <span className="flex items-center text-amber-600">
+                                  {isExpanded ? (
+                                    <ChevronUp className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4" />
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-600 mt-1">
+                              {notification.message}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">
+                              {formatDistanceToNow(new Date(notification.createdAt), {
+                                addSuffix: true,
+                                locale: es,
+                              })}
+                            </p>
+
+                            {/* Expanded content for time change notifications */}
+                            {isTimeChange && isExpanded && (
+                              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                <div className="space-y-3">
+                                  {/* Original Date */}
+                                  <div className="flex items-start gap-2">
+                                    <Calendar className="h-4 w-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                      <p className="text-xs font-medium text-gray-700">Fecha solicitada:</p>
+                                      <p className="text-xs text-gray-600">
+                                        {formatScheduledDate(notification.data?.originalScheduledDate || notification.data?.oldScheduledDate)}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* New Date */}
+                                  <div className="flex items-start gap-2">
+                                    <Clock className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                      <p className="text-xs font-medium text-amber-700">Nueva fecha programada:</p>
+                                      <p className="text-xs text-amber-600 font-medium">
+                                        {formatScheduledDate(notification.data?.newScheduledDate)}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Reason */}
+                                  {notification.data?.rescheduleReason && (
+                                    <div className="pt-2 border-t border-amber-200">
+                                      <p className="text-xs font-medium text-gray-700 mb-1">Motivo del cambio:</p>
+                                      <p className="text-xs text-gray-600 italic">
+                                        "{notification.data.rescheduleReason}"
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {/* Action button */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleViewMaintenance(notification)
+                                    }}
+                                    className="w-full mt-2 text-xs bg-primary text-white py-2 px-3 rounded-md hover:bg-primary/90 transition-colors"
+                                  >
+                                    Ver mantenimiento
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {!notification.read && (
+                              <div className="h-2 w-2 rounded-full bg-blue-600 mt-1"></div>
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                deleteNotification(notification.id)
+                              }}
+                              className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+                              title="Eliminar notificación"
+                            >
+                              <X className="h-3 w-3 text-gray-500 hover:text-gray-700" />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </DropdownMenuItem>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </DropdownMenuContent>

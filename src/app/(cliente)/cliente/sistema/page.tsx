@@ -70,10 +70,13 @@ export default function SistemaPage() {
     data: systemData,
     isLoading: loading,
     error,
-    refetch
+    refetch,
+    dataUpdatedAt
   } = useQuery({
     queryKey: ['cliente-sistema'],
     queryFn: fetchSystemData,
+    refetchInterval: 60000, // Refrescar cada 60 segundos
+    refetchIntervalInBackground: false, // No refrescar si la pestaña está en segundo plano
   })
 
   useEffect(() => {

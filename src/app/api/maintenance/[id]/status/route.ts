@@ -40,7 +40,7 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { status, notes, scheduledDate, technicianIds } = body
+    const { status, notes, scheduledDate, technicianIds, privateNotes, rescheduleReason } = body
 
     if (!status) {
       return NextResponse.json(
@@ -48,6 +48,17 @@ export async function PATCH(
         { status: 400 }
       )
     }
+
+    // Get the current maintenance to check if date/time changed (for approval notifications)
+    const currentMaintenance = await prisma.maintenanceRecord.findUnique({
+      where: { id: params.id },
+      select: {
+        scheduledDate: true,
+        clientId: true,
+        title: true,
+        status: true
+      }
+    })
 
     const updateData: any = {
       status,
@@ -60,9 +71,14 @@ export async function PATCH(
       }
     }
 
-    // When approving (changing to SCHEDULED), allow setting the scheduled date
-    if (status === 'SCHEDULED' && scheduledDate) {
-      updateData.scheduledDate = new Date(scheduledDate)
+    // When approving (changing to SCHEDULED), allow setting the scheduled date and private notes
+    if (status === 'SCHEDULED') {
+      if (scheduledDate) {
+        updateData.scheduledDate = new Date(scheduledDate)
+      }
+      if (privateNotes) {
+        updateData.privateNotes = privateNotes
+      }
     }
 
     // Update dates based on status
@@ -112,9 +128,35 @@ export async function PATCH(
 
     // Create notification for client
     let notificationMessage = ''
+    let notificationTitle = 'Actualización de Mantenimiento'
+
+    // Check if date/time was changed during approval
+    let timeWasChanged = false
+    if (status === 'SCHEDULED' && scheduledDate && currentMaintenance?.scheduledDate) {
+      const originalDate = currentMaintenance.scheduledDate
+      const newDate = new Date(scheduledDate)
+      // Compare timestamps to see if date/time changed
+      timeWasChanged = originalDate.getTime() !== newDate.getTime()
+    }
+
     switch (status) {
       case 'SCHEDULED':
-        notificationMessage = `Su mantenimiento "${maintenance.title}" ha sido programado`
+        if (timeWasChanged) {
+          // Format the new date for display
+          const approvedDate = new Date(scheduledDate)
+          const formattedDate = approvedDate.toLocaleDateString('es-MX', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+          notificationTitle = 'Mantenimiento Aprobado con Cambio de Horario'
+          notificationMessage = `Su mantenimiento "${maintenance.title}" ha sido aprobado, pero el horario fue modificado. Nueva fecha: ${formattedDate}`
+        } else {
+          notificationMessage = `Su mantenimiento "${maintenance.title}" ha sido programado`
+        }
         break
       case 'IN_PROGRESS':
         notificationMessage = `El mantenimiento "${maintenance.title}" está en progreso`
@@ -133,12 +175,16 @@ export async function PATCH(
         await prisma.notification.create({
           data: {
             clientId: maintenance.client.id,
-            type: `maintenance_${status.toLowerCase()}`,
-            title: 'Actualización de Mantenimiento',
+            type: timeWasChanged ? 'maintenance_time_changed' : `maintenance_${status.toLowerCase()}`,
+            title: notificationTitle,
             message: notificationMessage,
             data: {
               maintenanceId: maintenance.id,
-              status: status
+              status: status,
+              timeWasChanged: timeWasChanged,
+              newScheduledDate: scheduledDate || null,
+              originalScheduledDate: currentMaintenance?.scheduledDate?.toISOString() || null,
+              rescheduleReason: timeWasChanged ? (rescheduleReason || null) : null
             }
           }
         })
