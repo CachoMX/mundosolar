@@ -129,6 +129,41 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
               }
             }
           }
+        },
+        orders: {
+          where: {
+            status: { in: ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED'] }
+          },
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            orderItems: {
+              select: {
+                id: true,
+                quantity: true,
+                serialNumbers: true,
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                    brand: true,
+                    model: true,
+                    capacity: true,
+                    category: {
+                      select: {
+                        id: true,
+                        name: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          orderBy: {
+            orderDate: 'desc'
+          }
         }
       }
     })

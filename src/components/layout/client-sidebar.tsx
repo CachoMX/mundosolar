@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
 import {
   Home,
   Zap,
@@ -21,6 +22,7 @@ interface NavigationItem {
   href: string
   icon: any
   description: string
+  badgeKey?: string
 }
 
 const navigation: NavigationItem[] = [
@@ -40,7 +42,8 @@ const navigation: NavigationItem[] = [
     title: 'Mantenimiento',
     href: '/cliente/mantenimientos',
     icon: Wrench,
-    description: 'Programación de mantenimientos'
+    description: 'Programación de mantenimientos',
+    badgeKey: 'maintenance'
   },
   {
     title: 'Mis Pagos',
@@ -56,13 +59,44 @@ const navigation: NavigationItem[] = [
   }
 ]
 
+interface MaintenanceCounts {
+  scheduled: number
+  pendingApproval: number
+}
+
 interface ClientSidebarProps {
   className?: string
 }
 
 export function ClientSidebar({ className }: ClientSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [maintenanceCounts, setMaintenanceCounts] = useState<MaintenanceCounts>({ scheduled: 0, pendingApproval: 0 })
   const pathname = usePathname()
+
+  // Fetch maintenance counts
+  useEffect(() => {
+    const fetchMaintenanceCounts = async () => {
+      try {
+        const response = await fetch('/api/cliente/mantenimientos/dashboard')
+        const result = await response.json()
+        if (result.success) {
+          setMaintenanceCounts({
+            scheduled: result.data.scheduledThisWeek || 0,
+            pendingApproval: result.data.pendingApproval || 0
+          })
+        }
+      } catch (error) {
+        console.error('Error fetching maintenance counts:', error)
+      }
+    }
+
+    fetchMaintenanceCounts()
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchMaintenanceCounts, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const totalMaintenanceAlerts = maintenanceCounts.scheduled + maintenanceCounts.pendingApproval
 
   return (
     <div
@@ -109,18 +143,49 @@ export function ClientSidebar({ className }: ClientSidebarProps) {
                 <Button
                   variant={isActive ? 'secondary' : 'ghost'}
                   className={cn(
-                    'w-full justify-start h-12',
+                    'w-full justify-start h-12 relative',
                     isCollapsed && 'px-2',
                     isActive && 'bg-primary/10 text-primary font-medium'
                   )}
                   title={isCollapsed ? item.title : undefined}
                 >
-                  <Icon className={cn('h-5 w-5', isCollapsed ? 'mx-auto' : 'mr-3')} />
+                  <div className="relative">
+                    <Icon className={cn('h-5 w-5', isCollapsed ? 'mx-auto' : 'mr-3')} />
+                    {/* Badge for collapsed sidebar */}
+                    {isCollapsed && item.badgeKey === 'maintenance' && totalMaintenanceAlerts > 0 && (
+                      <span className="absolute -top-2 -right-2 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                        {totalMaintenanceAlerts > 9 ? '9+' : totalMaintenanceAlerts}
+                      </span>
+                    )}
+                  </div>
                   {!isCollapsed && (
                     <>
                       <div className="flex-1 text-left">
                         <div className="flex items-center justify-between">
                           <span className="text-sm">{item.title}</span>
+                          {/* Badges for maintenance */}
+                          {item.badgeKey === 'maintenance' && (
+                            <div className="flex items-center gap-1">
+                              {maintenanceCounts.scheduled > 0 && (
+                                <Badge
+                                  variant="default"
+                                  className="h-5 px-1.5 text-[10px] bg-green-600 hover:bg-green-700"
+                                  title="Mantenimientos confirmados"
+                                >
+                                  {maintenanceCounts.scheduled}
+                                </Badge>
+                              )}
+                              {maintenanceCounts.pendingApproval > 0 && (
+                                <Badge
+                                  variant="destructive"
+                                  className="h-5 px-1.5 text-[10px]"
+                                  title="Pendientes de confirmar"
+                                >
+                                  {maintenanceCounts.pendingApproval}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
                           {item.description}

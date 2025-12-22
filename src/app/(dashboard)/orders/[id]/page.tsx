@@ -67,6 +67,9 @@ interface Payment {
   paymentType: string
   paymentMethod: string | null
   paymentDate: string
+  dueDate: string | null
+  installmentNumber: number | null
+  status: string
   referenceNumber: string | null
   notes: string | null
   receiptUrl: string | null
@@ -75,6 +78,7 @@ interface Payment {
     name: string | null
     email: string
   } | null
+  paidAt: string | null
   createdAt: string
 }
 
@@ -909,64 +913,90 @@ export default function OrderDetailPage({ params }: { params: { id: string } }) 
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Tipo</TableHead>
+                    <TableHead>Cuota / Tipo</TableHead>
+                    <TableHead>Fecha Vencimiento</TableHead>
+                    <TableHead>Estado</TableHead>
                     <TableHead>Método</TableHead>
                     <TableHead>Referencia</TableHead>
-                    <TableHead>Comprobante</TableHead>
                     <TableHead className="text-right">Monto</TableHead>
                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payments.map((payment) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>
-                        {format(new Date(payment.paymentDate), 'dd/MM/yyyy', { locale: es })}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{getPaymentTypeLabel(payment.paymentType)}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          {getPaymentMethodIcon(payment.paymentMethod)}
-                          <span className="text-sm">{getPaymentMethodLabel(payment.paymentMethod)}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {payment.referenceNumber || '-'}
-                      </TableCell>
-                      <TableCell>
-                        {payment.receiptUrl ? (
-                          <a
-                            href={payment.receiptUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                  {payments.map((payment) => {
+                    const isInstallment = payment.paymentType === 'INSTALLMENT'
+                    const isPaid = payment.status === 'PAID'
+                    const isOverdue = isInstallment && !isPaid && payment.dueDate && new Date(payment.dueDate) < new Date()
+
+                    return (
+                      <TableRow key={payment.id} className={isOverdue ? 'bg-red-50' : ''}>
+                        <TableCell>
+                          {isInstallment ? (
+                            <div className="flex flex-col">
+                              <span className="font-medium">Cuota {payment.installmentNumber}</span>
+                              <span className="text-xs text-muted-foreground">{payment.notes}</span>
+                            </div>
+                          ) : (
+                            <Badge variant="outline">{getPaymentTypeLabel(payment.paymentType)}</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isInstallment && payment.dueDate ? (
+                            <div className="flex flex-col">
+                              <span>{format(new Date(payment.dueDate), 'dd/MM/yyyy', { locale: es })}</span>
+                              {!isPaid && (
+                                <span className={`text-xs ${isOverdue ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
+                                  {isOverdue
+                                    ? `Vencido hace ${Math.ceil((new Date().getTime() - new Date(payment.dueDate).getTime()) / (1000 * 60 * 60 * 24))} días`
+                                    : `Faltan ${Math.ceil((new Date(payment.dueDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} días`
+                                  }
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            format(new Date(payment.paymentDate), 'dd/MM/yyyy', { locale: es })
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {payment.status === 'PAID' ? (
+                            <Badge className="bg-green-600">Pagado</Badge>
+                          ) : payment.status === 'PENDING' ? (
+                            <Badge variant={isOverdue ? 'destructive' : 'secondary'}>
+                              {isOverdue ? 'Vencido' : 'Pendiente'}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline">{payment.status}</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isPaid ? (
+                            <div className="flex items-center gap-1">
+                              {getPaymentMethodIcon(payment.paymentMethod)}
+                              <span className="text-sm">{getPaymentMethodLabel(payment.paymentMethod)}</span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {payment.referenceNumber || '-'}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          ${payment.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleDeletePayment(payment.id)}
                           >
-                            <ImageIcon className="h-4 w-4" />
-                            Ver
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        ${payment.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => handleDeletePayment(payment.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>

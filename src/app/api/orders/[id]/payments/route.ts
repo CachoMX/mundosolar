@@ -66,7 +66,10 @@ export async function GET(
           }
         }
       },
-      orderBy: { paymentDate: 'desc' }
+      orderBy: [
+        { installmentNumber: 'asc' },
+        { paymentDate: 'desc' }
+      ]
     })
 
     return NextResponse.json({
@@ -89,10 +92,14 @@ export async function GET(
           paymentType: p.paymentType,
           paymentMethod: p.paymentMethod,
           paymentDate: p.paymentDate,
+          dueDate: p.dueDate,
+          installmentNumber: p.installmentNumber,
+          status: p.status,
           referenceNumber: p.referenceNumber,
           notes: p.notes,
           receiptUrl: p.receiptUrl,
           receivedBy: p.receivedBy,
+          paidAt: p.paidAt,
           createdAt: p.createdAt
         }))
       }

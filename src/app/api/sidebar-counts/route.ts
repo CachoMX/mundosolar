@@ -45,12 +45,22 @@ export async function GET() {
       }
     })).catch(() => 0)
 
+    // Count pending installations (PENDING_SCHEDULING, SCHEDULED, IN_PROGRESS)
+    const pendingInstallations = await withRetry(() => prisma.solarSystem.count({
+      where: {
+        installationStatus: {
+          in: ['PENDING_SCHEDULING', 'SCHEDULED', 'IN_PROGRESS']
+        }
+      }
+    })).catch(() => 0)
+
     return NextResponse.json({
       success: true,
       data: {
         clients: totalClients,
         maintenance: pendingMaintenance,
-        orders: pendingOrders || 0
+        orders: pendingOrders || 0,
+        installations: pendingInstallations || 0
       }
     })
   } catch (error) {

@@ -27,8 +27,10 @@ import {
   Receipt,
   Calendar,
   Banknote,
+  CalendarClock,
+  AlertTriangle,
 } from 'lucide-react'
-import { format } from 'date-fns'
+import { format, differenceInDays } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 interface Payment {
@@ -41,6 +43,10 @@ interface Payment {
   notes: string | null
   orderNumber: string
   orderId: string
+  status: string
+  dueDate: string | null
+  installmentNumber: number | null
+  paidAt: string | null
 }
 
 interface Order {
@@ -90,6 +96,7 @@ const paymentTypeLabels: Record<string, string> = {
   PARTIAL: 'Abono',
   FINAL: 'Liquidación',
   REFUND: 'Reembolso',
+  INSTALLMENT: 'Cuota',
 }
 
 const paymentMethodLabels: Record<string, string> = {
@@ -97,6 +104,95 @@ const paymentMethodLabels: Record<string, string> = {
   TRANSFER: 'Transferencia',
   CARD: 'Tarjeta',
   CHECK: 'Cheque',
+}
+
+// Component to show upcoming payments for an order
+function UpcomingPayments({ payments }: { payments: Payment[] }) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  // Filter pending payments with due dates and sort by due date
+  const pendingPayments = payments
+    .filter(p => p.status === 'PENDING' && p.dueDate)
+    .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
+    .slice(0, 2) // Only show next 2 payments
+
+  if (pendingPayments.length === 0) return null
+
+  return (
+    <div className="mt-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950 dark:to-orange-950 rounded-lg border border-amber-200 dark:border-amber-800">
+      <h4 className="font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2 mb-3">
+        <CalendarClock className="h-5 w-5" />
+        Próximos Pagos
+      </h4>
+      <div className="space-y-3">
+        {pendingPayments.map((payment) => {
+          const dueDate = new Date(payment.dueDate!)
+          const daysUntilDue = differenceInDays(dueDate, today)
+          const isOverdue = daysUntilDue < 0
+          const isDueSoon = daysUntilDue >= 0 && daysUntilDue <= 5
+
+          return (
+            <div
+              key={payment.id}
+              className={`flex items-center justify-between p-3 rounded-lg border ${
+                isOverdue
+                  ? 'bg-red-100 dark:bg-red-900 border-red-300 dark:border-red-700'
+                  : isDueSoon
+                  ? 'bg-amber-100 dark:bg-amber-900 border-amber-300 dark:border-amber-700'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-full ${
+                  isOverdue
+                    ? 'bg-red-200 dark:bg-red-800'
+                    : isDueSoon
+                    ? 'bg-amber-200 dark:bg-amber-800'
+                    : 'bg-blue-100 dark:bg-blue-900'
+                }`}>
+                  {isOverdue ? (
+                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  ) : (
+                    <Calendar className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  )}
+                </div>
+                <div>
+                  <p className="font-medium">
+                    Cuota {payment.installmentNumber}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Vence: {format(dueDate, "d 'de' MMMM, yyyy", { locale: es })}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="font-bold text-lg">
+                  ${payment.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                </p>
+                <p className={`text-sm font-medium ${
+                  isOverdue
+                    ? 'text-red-600 dark:text-red-400'
+                    : isDueSoon
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-blue-600 dark:text-blue-400'
+                }`}>
+                  {isOverdue
+                    ? `Vencido hace ${Math.abs(daysUntilDue)} día${Math.abs(daysUntilDue) !== 1 ? 's' : ''}`
+                    : daysUntilDue === 0
+                    ? 'Vence hoy'
+                    : daysUntilDue === 1
+                    ? 'Vence mañana'
+                    : `Faltan ${daysUntilDue} días`
+                  }
+                </p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 export default function PagosPage() {
@@ -131,6 +227,11 @@ export default function PagosPage() {
   if (!data) return null
 
   const { summary, orders, recentPayments } = data
+
+  // Check if there are any orders with pending scheduled payments
+  const ordersWithPendingPayments = orders.filter(order =>
+    order.payments.some(p => p.status === 'PENDING' && p.dueDate)
+  )
 
   return (
     <div className="flex-1 space-y-6 p-4 md:p-6">
@@ -258,7 +359,7 @@ export default function PagosPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Detalle por Orden</CardTitle>
-          <CardDescription>Ver pagos de cada orden</CardDescription>
+          <CardDescription>Ver pagos y cuotas pendientes de cada orden</CardDescription>
         </CardHeader>
         <CardContent>
           {orders.length === 0 ? (
@@ -271,6 +372,7 @@ export default function PagosPage() {
               {orders.map((order) => {
                 const statusConfig = paymentStatusConfig[order.paymentStatus] || paymentStatusConfig.PENDING
                 const StatusIcon = statusConfig.icon
+                const hasPendingScheduled = order.payments.some(p => p.status === 'PENDING' && p.dueDate)
 
                 return (
                   <AccordionItem key={order.id} value={order.id}>
@@ -278,7 +380,15 @@ export default function PagosPage() {
                       <div className="flex items-center justify-between w-full pr-4">
                         <div className="flex items-center gap-3">
                           <div className="text-left">
-                            <p className="font-medium">{order.orderNumber}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{order.orderNumber}</p>
+                              {hasPendingScheduled && (
+                                <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300">
+                                  <CalendarClock className="h-3 w-3 mr-1" />
+                                  Financiamiento
+                                </Badge>
+                              )}
+                            </div>
                             <p className="text-sm text-muted-foreground">
                               {format(new Date(order.orderDate), "d 'de' MMMM, yyyy", { locale: es })}
                             </p>
@@ -320,40 +430,54 @@ export default function PagosPage() {
                           </div>
                         </div>
 
+                        {/* Upcoming Payments Section */}
+                        <UpcomingPayments payments={order.payments} />
+
                         {/* Payments Table */}
                         {order.payments.length > 0 ? (
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Fecha</TableHead>
-                                <TableHead>Tipo</TableHead>
-                                <TableHead>Método</TableHead>
-                                <TableHead>Referencia</TableHead>
-                                <TableHead className="text-right">Monto</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {order.payments.map((payment) => (
-                                <TableRow key={payment.id}>
-                                  <TableCell>
-                                    {format(new Date(payment.paymentDate), "dd/MM/yyyy", { locale: es })}
-                                  </TableCell>
-                                  <TableCell>
-                                    {paymentTypeLabels[payment.paymentType] || payment.paymentType}
-                                  </TableCell>
-                                  <TableCell>
-                                    {paymentMethodLabels[payment.paymentMethod || ''] || payment.paymentMethod || '-'}
-                                  </TableCell>
-                                  <TableCell className="font-mono text-sm">
-                                    {payment.referenceNumber || '-'}
-                                  </TableCell>
-                                  <TableCell className="text-right font-medium text-green-600">
-                                    ${payment.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                                  </TableCell>
+                          <div>
+                            <h4 className="font-medium mb-2 text-sm text-muted-foreground">Historial de Pagos</h4>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Fecha</TableHead>
+                                  <TableHead>Tipo</TableHead>
+                                  <TableHead>Método</TableHead>
+                                  <TableHead>Estado</TableHead>
+                                  <TableHead className="text-right">Monto</TableHead>
                                 </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
+                              </TableHeader>
+                              <TableBody>
+                                {order.payments
+                                  .filter(p => p.status === 'PAID' || p.paidAt)
+                                  .map((payment) => (
+                                  <TableRow key={payment.id}>
+                                    <TableCell>
+                                      {format(new Date(payment.paidAt || payment.paymentDate), "dd/MM/yyyy", { locale: es })}
+                                    </TableCell>
+                                    <TableCell>
+                                      {payment.installmentNumber
+                                        ? `Cuota ${payment.installmentNumber}`
+                                        : paymentTypeLabels[payment.paymentType] || payment.paymentType
+                                      }
+                                    </TableCell>
+                                    <TableCell>
+                                      {paymentMethodLabels[payment.paymentMethod || ''] || payment.paymentMethod || '-'}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge variant="default" className="bg-green-600">
+                                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                                        Pagado
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right font-medium text-green-600">
+                                      ${payment.amount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
                         ) : (
                           <p className="text-center text-muted-foreground py-4">
                             No hay pagos registrados para esta orden

@@ -28,7 +28,7 @@ interface NavigationItem {
   title: string
   href: string
   icon: any
-  badgeKey?: 'clients' | 'orders' | 'maintenance'
+  badgeKey?: 'clients' | 'orders' | 'maintenance' | 'installations'
   description: string
 }
 
@@ -76,6 +76,7 @@ const navigationItems: NavigationItem[] = [
     title: 'Instalaciones',
     href: '/installations',
     icon: HardHat,
+    badgeKey: 'installations',
     description: 'Tracking de instalaciones y CFE'
   },
   {
@@ -108,6 +109,7 @@ interface SidebarCounts {
   clients: number
   orders: number
   maintenance: number
+  installations: number
 }
 
 interface SidebarProps {
@@ -116,7 +118,7 @@ interface SidebarProps {
 
 export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
-  const [counts, setCounts] = useState<SidebarCounts>({ clients: 0, orders: 0, maintenance: 0 })
+  const [counts, setCounts] = useState<SidebarCounts>({ clients: 0, orders: 0, maintenance: 0, installations: 0 })
   const pathname = usePathname()
 
   useEffect(() => {

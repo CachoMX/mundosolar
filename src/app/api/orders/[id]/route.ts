@@ -90,7 +90,7 @@ export async function PUT(
     // Check if order exists
     const existingOrder = await prisma.order.findUnique({
       where: { id },
-      include: { orderItems: true }
+      include: { orderItems: true, payments: true }
     })
 
     if (!existingOrder) {
@@ -178,6 +178,49 @@ export async function PUT(
       }
     }))
 
+    // If order is CONFIRMED and has financing but no scheduled payments, create them
+    // This handles both:
+    // 1. Status changing to CONFIRMED now
+    // 2. Order was already CONFIRMED but payments were never created (migration case)
+    let paymentsCreated = 0
+    const orderIsConfirmed = data.status === 'CONFIRMED' || (existingOrder.status === 'CONFIRMED' && !data.status)
+    const hasFinancing = existingOrder.financingMonths && existingOrder.monthlyPayment
+    const existingInstallments = existingOrder.payments.filter(p => p.paymentType === 'INSTALLMENT')
+
+    if (orderIsConfirmed && hasFinancing && existingInstallments.length === 0) {
+      const financingMonths = existingOrder.financingMonths!
+      const monthlyPayment = Number(existingOrder.monthlyPayment)
+      const installmentPayments = []
+      const startDate = new Date()
+
+      for (let i = 1; i <= financingMonths; i++) {
+        const dueDate = new Date(startDate)
+        dueDate.setMonth(dueDate.getMonth() + i)
+
+        installmentPayments.push({
+          orderId: id,
+          amount: monthlyPayment,
+          paymentType: 'INSTALLMENT' as const,
+          status: 'PENDING' as const,
+          dueDate,
+          installmentNumber: i,
+          notes: `Cuota ${i} de ${financingMonths}`,
+        })
+      }
+
+      await prisma.payment.createMany({
+        data: installmentPayments
+      })
+
+      paymentsCreated = financingMonths
+    }
+
+    let message = 'Orden actualizada exitosamente'
+    if (paymentsCreated > 0) {
+      const monthlyPayment = Number(existingOrder.monthlyPayment)
+      message += `. ${paymentsCreated} pagos mensuales de $${monthlyPayment.toLocaleString('es-MX', { minimumFractionDigits: 2 })} programados`
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -186,7 +229,7 @@ export async function PUT(
         subtotal: Number(order.subtotal),
         taxAmount: Number(order.taxAmount)
       },
-      message: 'Orden actualizada exitosamente'
+      message
     })
   } catch (error: any) {
     console.error('Error updating order:', error)

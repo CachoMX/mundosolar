@@ -12,8 +12,10 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 interface PlantData {
   name: string
+  plantId?: string
   todayEnergy: number
   totalEnergy: number
+  currentPower?: number
   status: string
 }
 
@@ -287,7 +289,9 @@ export default function SistemaPage() {
                     <div className={`h-2 w-2 rounded-full ${plant.status === 'online' ? 'bg-green-500' : 'bg-gray-300'}`} />
                     <div>
                       <p className="font-medium">{plant.name}</p>
-                      <p className="text-xs text-muted-foreground">Capacidad: N/A</p>
+                      <p className="text-xs text-muted-foreground">
+                        Potencia: <span className="text-green-600 font-medium">{plant.currentPower?.toFixed(2) || '0.00'} kW</span>
+                      </p>
                     </div>
                   </div>
                   <div className="text-right">

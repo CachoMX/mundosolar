@@ -224,6 +224,8 @@ export default function EditClientPage() {
   const [cfeReceipts, setCfeReceipts] = useState<CfeReceiptData[]>([])
   const [uploadingMeterIndex, setUploadingMeterIndex] = useState<number | null>(null)
   const [loadingMaintenances, setLoadingMaintenances] = useState(false)
+  const [growattPlants, setGrowattPlants] = useState<any[]>([])
+  const [loadingGrowatt, setLoadingGrowatt] = useState(false)
   const [contactSettings, setContactSettings] = useState<ContactSettings>({
     contact_name: '',
     contact_position: '',
@@ -306,6 +308,48 @@ export default function EditClientPage() {
       console.error('Error fetching maintenances:', error)
     } finally {
       setLoadingMaintenances(false)
+    }
+  }
+
+  const fetchGrowattPlants = async (username: string, password: string, existingPanels: SolarPanel[]) => {
+    if (!username || !password) return
+
+    try {
+      setLoadingGrowatt(true)
+      const response = await fetch('/api/integrations/growatt/plants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      })
+      const result = await response.json()
+
+      if (result.success && result.data?.plants) {
+        const plants = result.data.plants
+        setGrowattPlants(plants)
+
+        // If no panels exist yet, populate from Growatt plants
+        if (existingPanels.length === 0 && plants.length > 0) {
+          const growattPanels: SolarPanel[] = plants.map((plant: any) => {
+            // Parse capacity from string like "10 kW" or "10kW"
+            const capacityStr = plant.capacity || '0'
+            const capacityKw = parseFloat(capacityStr.replace(/[^\d.]/g, '')) || 0
+            const capacityWatts = capacityKw * 1000
+
+            return {
+              id: `growatt-${plant.plantId || crypto.randomUUID()}`,
+              brand: 'Growatt',
+              model: plant.plantName || 'Sistema Growatt',
+              quantity: 1,
+              wattsPerPanel: capacityWatts
+            }
+          })
+          setPanels(growattPanels)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching Growatt plants:', error)
+    } finally {
+      setLoadingGrowatt(false)
     }
   }
 
@@ -405,17 +449,17 @@ export default function EditClientPage() {
           })))
         }
 
-        // Load panels and inverters from solar systems
-        if (client.solarSystems && client.solarSystems.length > 0) {
-          const loadedPanels: SolarPanel[] = []
-          const loadedInverters: Inverter[] = []
+        // Load panels and inverters from solar systems components or orders
+        const loadedPanels: SolarPanel[] = []
+        const loadedInverters: Inverter[] = []
 
+        // First try to load from solar system components
+        if (client.solarSystems && client.solarSystems.length > 0) {
           client.solarSystems.forEach((system: any) => {
             if (system.components) {
               system.components.forEach((component: any) => {
                 const categoryName = component.product?.category?.name?.toLowerCase() || ''
                 const capacity = component.product?.capacity || ''
-                // Try to extract numeric value from capacity string (e.g., "400W" -> 400)
                 const capacityNum = parseInt(capacity.replace(/\D/g, '')) || 0
 
                 if (categoryName.includes('panel')) {
@@ -438,13 +482,65 @@ export default function EditClientPage() {
               })
             }
           })
+        }
 
-          if (loadedPanels.length > 0) {
-            setPanels(loadedPanels)
-          }
-          if (loadedInverters.length > 0) {
-            setInverters(loadedInverters)
-          }
+        // If no panels/inverters from components, try to load from orders
+        if (loadedPanels.length === 0 && loadedInverters.length === 0 && client.orders) {
+          client.orders.forEach((order: any) => {
+            if (order.orderItems) {
+              order.orderItems.forEach((item: any) => {
+                const categoryName = item.product?.category?.name?.toLowerCase() || ''
+                const capacity = item.product?.capacity || ''
+                const capacityNum = parseInt(capacity.replace(/\D/g, '')) || 0
+
+                if (categoryName.includes('panel')) {
+                  const existingPanel = loadedPanels.find(p =>
+                    p.brand === (item.product?.brand || '') &&
+                    p.model === (item.product?.model || item.product?.name || '')
+                  )
+                  if (existingPanel) {
+                    existingPanel.quantity += item.quantity || 1
+                  } else {
+                    loadedPanels.push({
+                      id: item.id,
+                      brand: item.product?.brand || '',
+                      model: item.product?.model || item.product?.name || '',
+                      quantity: item.quantity || 1,
+                      wattsPerPanel: capacityNum
+                    })
+                  }
+                } else if (categoryName.includes('inversor') || categoryName.includes('inverter')) {
+                  const existingInverter = loadedInverters.find(i =>
+                    i.brand === (item.product?.brand || '') &&
+                    i.model === (item.product?.model || item.product?.name || '')
+                  )
+                  if (existingInverter) {
+                    existingInverter.quantity += item.quantity || 1
+                  } else {
+                    loadedInverters.push({
+                      id: item.id,
+                      brand: item.product?.brand || '',
+                      model: item.product?.model || item.product?.name || '',
+                      quantity: item.quantity || 1,
+                      capacityWatts: capacityNum
+                    })
+                  }
+                }
+              })
+            }
+          })
+        }
+
+        if (loadedPanels.length > 0) {
+          setPanels(loadedPanels)
+        }
+        if (loadedInverters.length > 0) {
+          setInverters(loadedInverters)
+        }
+
+        // Fetch Growatt plants if credentials exist
+        if (client.growattUsername && client.growattPassword) {
+          fetchGrowattPlants(client.growattUsername, client.growattPassword, loadedPanels)
         }
       } else {
         throw new Error(result.error || 'Cliente no encontrado')
@@ -1665,6 +1761,77 @@ export default function EditClientPage() {
           {/* TAB: Sistema Solar */}
           <TabsContent value="solar">
             <div className="grid gap-6">
+              {/* Growatt Plants Section */}
+              {(growattPlants.length > 0 || loadingGrowatt) && (
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center">
+                          <Zap className="mr-2 h-5 w-5 text-green-500" />
+                          Plantas Growatt
+                        </CardTitle>
+                        <CardDescription>
+                          Sistemas detectados desde Growatt
+                        </CardDescription>
+                      </div>
+                      {growattPlants.length > 0 && (
+                        <div className="flex items-center gap-4 text-sm">
+                          <div className="text-right">
+                            <span className="text-muted-foreground">Total Plantas:</span>
+                            <span className="ml-2 font-bold">{growattPlants.length}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-muted-foreground">Capacidad Total:</span>
+                            <span className="ml-2 font-bold">
+                              {growattPlants.reduce((sum, p) => {
+                                const cap = parseFloat(p.capacity?.replace(/[^\d.]/g, '') || '0')
+                                return sum + cap
+                              }, 0).toFixed(2)} kW
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingGrowatt ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                        <span className="text-muted-foreground">Cargando plantas de Growatt...</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {growattPlants.map((plant, index) => (
+                          <div
+                            key={plant.plantId || index}
+                            className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 rounded-lg border border-green-200 dark:border-green-800"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                              <div>
+                                <p className="font-medium">{plant.plantName}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  Capacidad: {plant.capacity || 'N/A'}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-medium text-green-600">
+                                Hoy: {plant.todayEnergy || '0'} kWh
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Total: {plant.totalEnergy || '0'} kWh
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Paneles Section */}
               <Card>
                 <CardHeader>

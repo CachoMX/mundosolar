@@ -122,14 +122,16 @@ export async function GET(request: NextRequest) {
     const partialOrders = orders.filter(o => o.paymentStatus === 'PARTIAL').length
     const pendingOrders = orders.filter(o => o.paymentStatus === 'PENDING').length
 
-    // Get all payments flattened for timeline view
+    // Get all PAID payments flattened for timeline view (only completed payments)
     const allPayments = orders.flatMap(order =>
-      order.payments.map(payment => ({
-        ...payment,
-        amount: Number(payment.amount),
-        orderNumber: order.orderNumber,
-        orderId: order.id,
-      }))
+      order.payments
+        .filter(payment => payment.status === 'PAID')
+        .map(payment => ({
+          ...payment,
+          amount: Number(payment.amount),
+          orderNumber: order.orderNumber,
+          orderId: order.id,
+        }))
     ).sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
 
     // Calculate totals for scheduled payments
