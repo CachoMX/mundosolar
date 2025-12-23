@@ -307,7 +307,6 @@ model Product {
   model         String?
   capacity      String?
   description   String?
-  barcode       String?  // Código de barras del producto (no único - identifica tipo de producto)
   unitPrice     Decimal? @db.Decimal(10, 2)
   categoryId    String
   subCategoryId String?

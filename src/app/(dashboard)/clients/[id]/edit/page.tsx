@@ -11,7 +11,17 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, Save, User, Building, MapPin, FileText, Loader2, Sun, Key, Zap, Plus, Trash2, Wrench, StickyNote, Upload, File, X, ExternalLink, Calendar, Clock, CheckCircle2, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Save, User, Building, MapPin, FileText, Loader2, Sun, Key, Zap, Plus, Trash2, Wrench, StickyNote, Upload, File, X, ExternalLink, Calendar, Clock, CheckCircle2, AlertCircle, AlertTriangle } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -215,6 +225,8 @@ export default function EditClientPage() {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [panels, setPanels] = useState<SolarPanel[]>([])
@@ -887,6 +899,34 @@ export default function EditClientPage() {
       alert(error instanceof Error ? error.message : 'Error al actualizar cliente')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      const response = await fetch(`/api/clients/${clientId}`, {
+        method: 'DELETE'
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Error al eliminar cliente')
+      }
+
+      // Invalidate cache
+      await queryClient.invalidateQueries({ queryKey: ['clients'] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+
+      toast.success('Cliente eliminado correctamente')
+      router.push('/clients')
+    } catch (error) {
+      console.error('Error deleting client:', error)
+      toast.error(error instanceof Error ? error.message : 'Error al eliminar cliente')
+    } finally {
+      setDeleting(false)
+      setShowDeleteDialog(false)
     }
   }
 
@@ -2194,18 +2234,65 @@ export default function EditClientPage() {
         </Tabs>
 
         {/* Action Buttons */}
-        <div className="flex justify-end space-x-4 mt-6">
-          <Link href="/clients">
-            <Button variant="outline" type="button">
-              Cancelar
-            </Button>
-          </Link>
-          <Button type="submit" disabled={saving}>
-            <Save className="mr-2 h-4 w-4" />
-            {saving ? 'Guardando...' : 'Guardar Cambios'}
+        <div className="flex justify-between mt-6">
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => setShowDeleteDialog(true)}
+            disabled={deleting}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Eliminar Cliente
           </Button>
+          <div className="flex space-x-4">
+            <Link href="/clients">
+              <Button variant="outline" type="button">
+                Cancelar
+              </Button>
+            </Link>
+            <Button type="submit" disabled={saving}>
+              <Save className="mr-2 h-4 w-4" />
+              {saving ? 'Guardando...' : 'Guardar Cambios'}
+            </Button>
+          </div>
         </div>
       </form>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Eliminar Cliente
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que deseas eliminar este cliente? Esta acción no se puede deshacer
+              y se eliminarán todos los datos asociados (direcciones, medidores CFE, sistemas solares, etc.).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Eliminar
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -242,7 +242,7 @@ export default function NewOrderPage() {
     }
   }
 
-  // Search product by barcode and add to order
+  // Search product by serialNumber (barcode) in inventory entries
   const searchByBarcode = async (barcode: string) => {
     if (!barcode.trim()) return
 
@@ -250,21 +250,28 @@ export default function NewOrderPage() {
     setBarcodeError(null)
 
     try {
-      const response = await fetch(`/api/products?barcode=${encodeURIComponent(barcode)}`)
+      // Search by serialNumber in inventory entries
+      const response = await fetch(`/api/inventory/entries?serialNumber=${encodeURIComponent(barcode)}`)
       const result = await response.json()
 
       if (result.success && result.data.length > 0) {
-        const foundProducts = result.data
-        // If single product found, add it directly with the scanned barcode as serial
-        if (foundProducts.length === 1) {
-          addProductToOrder(foundProducts[0], barcode)
-        } else {
-          // Multiple products with same barcode - add first one with serial
-          addProductToOrder(foundProducts[0], barcode)
+        const inventoryItem = result.data[0]
+        // Create a product-like object from inventory item data
+        const productFromInventory = {
+          id: inventoryItem.product.id,
+          name: inventoryItem.product.name,
+          brand: inventoryItem.product.brand,
+          model: inventoryItem.product.model,
+          capacity: inventoryItem.product.capacity || null,
+          unitPrice: inventoryItem.unitCost,
+          barcode: barcode || null,
+          category: inventoryItem.product.category,
+          totalStock: inventoryItem.quantity
         }
+        addProductToOrder(productFromInventory as Product, barcode)
         setBarcodeInput('')
       } else {
-        setBarcodeError('Producto no encontrado con ese código de barras')
+        setBarcodeError('No se encontró un item de inventario con ese código de barras')
       }
     } catch (error) {
       setBarcodeError('Error al buscar producto')

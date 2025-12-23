@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 export const dynamic = 'force-dynamic'
 
 // POST /api/inventory - Register inventory exit (sale/output)
+// Uses serialNumber (from InventoryItem) to find items
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -24,97 +25,68 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Find product by barcode (supports exact match and prefix match)
-    // First get all products with barcodes
-    const allProductsWithBarcodes = await withRetry(() => prisma.product.findMany({
+    // Find inventory item by serialNumber (stored in InventoryItem)
+    const inventoryItemWithSerial = await withRetry(() => prisma.inventoryItem.findFirst({
       where: {
-        isActive: true,
-        barcode: { not: null }
+        serialNumber: barcode,
+        ...(locationId ? { locationId } : {})
       },
       include: {
-        inventoryItems: {
-          where: locationId ? { locationId } : {},
-          include: { location: true }
-        }
+        product: true,
+        location: true
       }
     }))
 
-    // Find matching product (exact or prefix match)
-    const product = allProductsWithBarcodes.find(p => {
-      if (!p.barcode) return false
-      // Exact match
-      if (p.barcode === barcode) return true
-      // Prefix match: scanned code starts with product's barcode prefix
-      if (barcode.startsWith(p.barcode)) return true
-      return false
-    })
-
-    if (!product) {
-      return NextResponse.json({
-        success: false,
-        error: 'Producto no encontrado con ese código de barras'
-      }, { status: 404 })
-    }
-
-    // Check if there's enough stock
-    const totalStock = product.inventoryItems.reduce((sum, item) => sum + item.quantity, 0)
-    if (totalStock < quantity) {
-      return NextResponse.json({
-        success: false,
-        error: `Stock insuficiente. Disponible: ${totalStock}, Solicitado: ${quantity}`
-      }, { status: 400 })
-    }
-
-    // Find inventory item to deduct from (use first available or specified location)
-    let remainingToDeduct = quantity
-    const movements = []
-
-    for (const inventoryItem of product.inventoryItems) {
-      if (remainingToDeduct <= 0) break
-      if (inventoryItem.quantity <= 0) continue
-
-      const deductAmount = Math.min(remainingToDeduct, inventoryItem.quantity)
+    if (inventoryItemWithSerial) {
+      // Found by exact serial number match
+      if (inventoryItemWithSerial.quantity < quantity) {
+        return NextResponse.json({
+          success: false,
+          error: `Stock insuficiente. Disponible: ${inventoryItemWithSerial.quantity}, Solicitado: ${quantity}`
+        }, { status: 400 })
+      }
 
       // Update inventory item quantity
       await prisma.inventoryItem.update({
-        where: { id: inventoryItem.id },
-        data: { quantity: inventoryItem.quantity - deductAmount }
+        where: { id: inventoryItemWithSerial.id },
+        data: { quantity: inventoryItemWithSerial.quantity - quantity }
       })
 
       // Create movement record
       const movement = await prisma.inventoryMovement.create({
         data: {
           type: 'SALE',
-          quantity: deductAmount,
-          fromItemId: inventoryItem.id,
+          quantity,
+          fromItemId: inventoryItemWithSerial.id,
           reason: reason || 'Salida de inventario por escaneo',
-          notes: notes || `Producto: ${product.name}, Código: ${barcode}`
+          notes: notes || `Producto: ${inventoryItemWithSerial.product.name}, Código: ${barcode}`
         }
       })
 
-      movements.push({
-        ...movement,
-        locationName: inventoryItem.location.name,
-        deductedAmount: deductAmount
+      return NextResponse.json({
+        success: true,
+        data: {
+          product: {
+            id: inventoryItemWithSerial.product.id,
+            name: inventoryItemWithSerial.product.name
+          },
+          quantityDeducted: quantity,
+          movements: [{
+            ...movement,
+            locationName: inventoryItemWithSerial.location.name,
+            deductedAmount: quantity
+          }],
+          newTotalStock: inventoryItemWithSerial.quantity - quantity
+        },
+        message: `Se descontaron ${quantity} unidades de ${inventoryItemWithSerial.product.name}`
       })
-
-      remainingToDeduct -= deductAmount
     }
 
+    // If not found by serial, return error
     return NextResponse.json({
-      success: true,
-      data: {
-        product: {
-          id: product.id,
-          name: product.name,
-          barcode: product.barcode
-        },
-        quantityDeducted: quantity,
-        movements,
-        newTotalStock: totalStock - quantity
-      },
-      message: `Se descontaron ${quantity} unidades de ${product.name}`
-    })
+      success: false,
+      error: 'No se encontró un item de inventario con ese código de barras'
+    }, { status: 404 })
   } catch (error: any) {
     console.error('Error processing inventory exit:', error)
     return NextResponse.json(

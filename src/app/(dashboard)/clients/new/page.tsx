@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
-import { ArrowLeft, Save, User, Building, MapPin, FileText, Sun, Plus, Trash2, Upload, Eye, X } from 'lucide-react'
+import { ArrowLeft, Save, User, Building, MapPin, FileText, Sun, Plus, Trash2, Upload, Eye, X, ChevronDown, ChevronUp, Home } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
@@ -29,6 +29,43 @@ interface InverterRow {
   marca: string
   modelo: string
   potencia: string
+}
+
+// Interface for additional addresses with their own CFE and solar data
+interface AdditionalAddress {
+  id: string
+  name: string // e.g., "Sucursal Norte", "Casa de Campo"
+  street: string
+  neighborhood: string
+  city: string
+  state: string
+  zipCode: string
+  // CFE Data
+  cfeRpu: string
+  cfeMeterNumber: string
+  cfeRmu: string
+  cfeAccountNumber: string
+  cfeMeterType: string
+  cfeTariff: string
+  cfePhases: string
+  cfeWires: string
+  cfeInstalledLoad: string
+  cfeContractedDemand: string
+  cfeVoltageLevel: string
+  cfeMediumVoltage: boolean
+  cfeBranch: string
+  cfeFolio: string
+  cfeReceiptFileUrl: string
+  // Solar System Data
+  growattUsername: string
+  growattPassword: string
+  expectedDailyGeneration: string
+  panels: PanelRow[]
+  inverters: InverterRow[]
+  // UI State
+  isExpanded: boolean
+  showCfe: boolean
+  showSolar: boolean
 }
 
 interface ClientFormData {
@@ -188,13 +225,50 @@ export default function NewClientPage() {
     cfeReceiptFileUrl: ''
   })
 
-  // Panels and Inverters state
+  // Panels and Inverters state (for main address)
   const [panels, setPanels] = useState<PanelRow[]>([
     { id: '1', cantidad: '', marca: '', modelo: '', potencia: '' }
   ])
   const [inverters, setInverters] = useState<InverterRow[]>([
     { id: '1', cantidad: '', marca: '', modelo: '', potencia: '' }
   ])
+
+  // Additional addresses state
+  const [additionalAddresses, setAdditionalAddresses] = useState<AdditionalAddress[]>([])
+
+  // Helper function to create empty additional address
+  const createEmptyAddress = (): AdditionalAddress => ({
+    id: Date.now().toString(),
+    name: '',
+    street: '',
+    neighborhood: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    cfeRpu: '',
+    cfeMeterNumber: '',
+    cfeRmu: '',
+    cfeAccountNumber: '',
+    cfeMeterType: '',
+    cfeTariff: '',
+    cfePhases: '',
+    cfeWires: '',
+    cfeInstalledLoad: '',
+    cfeContractedDemand: '',
+    cfeVoltageLevel: '',
+    cfeMediumVoltage: false,
+    cfeBranch: '',
+    cfeFolio: '',
+    cfeReceiptFileUrl: '',
+    growattUsername: '',
+    growattPassword: '',
+    expectedDailyGeneration: '',
+    panels: [{ id: '1', cantidad: '', marca: '', modelo: '', potencia: '' }],
+    inverters: [{ id: '1', cantidad: '', marca: '', modelo: '', potencia: '' }],
+    isExpanded: true,
+    showCfe: false,
+    showSolar: false
+  })
 
   const handleInputChange = (field: keyof ClientFormData, value: string | boolean) => {
     setFormData(prev => ({
@@ -231,6 +305,155 @@ export default function NewClientPage() {
 
   const updateInverterRow = (id: string, field: keyof InverterRow, value: string) => {
     setInverters(inverters.map(i => i.id === id ? { ...i, [field]: value } : i))
+  }
+
+  // Additional Address handlers
+  const addAdditionalAddress = () => {
+    setAdditionalAddresses([...additionalAddresses, createEmptyAddress()])
+  }
+
+  const removeAdditionalAddress = (id: string) => {
+    setAdditionalAddresses(additionalAddresses.filter(a => a.id !== id))
+  }
+
+  const updateAdditionalAddress = (id: string, field: keyof AdditionalAddress, value: any) => {
+    setAdditionalAddresses(additionalAddresses.map(a =>
+      a.id === id ? { ...a, [field]: value } : a
+    ))
+  }
+
+  const toggleAddressExpanded = (id: string) => {
+    setAdditionalAddresses(additionalAddresses.map(a =>
+      a.id === id ? { ...a, isExpanded: !a.isExpanded } : a
+    ))
+  }
+
+  const toggleAddressCfe = (id: string) => {
+    setAdditionalAddresses(additionalAddresses.map(a =>
+      a.id === id ? { ...a, showCfe: !a.showCfe } : a
+    ))
+  }
+
+  const toggleAddressSolar = (id: string) => {
+    setAdditionalAddresses(additionalAddresses.map(a =>
+      a.id === id ? { ...a, showSolar: !a.showSolar } : a
+    ))
+  }
+
+  // Panel handlers for additional addresses
+  const addAddressPanelRow = (addressId: string) => {
+    setAdditionalAddresses(additionalAddresses.map(a => {
+      if (a.id === addressId) {
+        return {
+          ...a,
+          panels: [...a.panels, { id: Date.now().toString(), cantidad: '', marca: '', modelo: '', potencia: '' }]
+        }
+      }
+      return a
+    }))
+  }
+
+  const removeAddressPanelRow = (addressId: string, panelId: string) => {
+    setAdditionalAddresses(additionalAddresses.map(a => {
+      if (a.id === addressId && a.panels.length > 1) {
+        return { ...a, panels: a.panels.filter(p => p.id !== panelId) }
+      }
+      return a
+    }))
+  }
+
+  const updateAddressPanelRow = (addressId: string, panelId: string, field: keyof PanelRow, value: string) => {
+    setAdditionalAddresses(additionalAddresses.map(a => {
+      if (a.id === addressId) {
+        return {
+          ...a,
+          panels: a.panels.map(p => p.id === panelId ? { ...p, [field]: value } : p)
+        }
+      }
+      return a
+    }))
+  }
+
+  // Inverter handlers for additional addresses
+  const addAddressInverterRow = (addressId: string) => {
+    setAdditionalAddresses(additionalAddresses.map(a => {
+      if (a.id === addressId) {
+        return {
+          ...a,
+          inverters: [...a.inverters, { id: Date.now().toString(), cantidad: '', marca: '', modelo: '', potencia: '' }]
+        }
+      }
+      return a
+    }))
+  }
+
+  const removeAddressInverterRow = (addressId: string, inverterId: string) => {
+    setAdditionalAddresses(additionalAddresses.map(a => {
+      if (a.id === addressId && a.inverters.length > 1) {
+        return { ...a, inverters: a.inverters.filter(i => i.id !== inverterId) }
+      }
+      return a
+    }))
+  }
+
+  const updateAddressInverterRow = (addressId: string, inverterId: string, field: keyof InverterRow, value: string) => {
+    setAdditionalAddresses(additionalAddresses.map(a => {
+      if (a.id === addressId) {
+        return {
+          ...a,
+          inverters: a.inverters.map(i => i.id === inverterId ? { ...i, [field]: value } : i)
+        }
+      }
+      return a
+    }))
+  }
+
+  // File upload handler for additional address CFE receipt
+  const handleAddressFileUpload = async (addressId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const supabase = createClient()
+      const fileExt = file.name.split('.').pop()
+      const fileName = `cfe-receipt-addr-${addressId}-${Date.now()}.${fileExt}`
+      const filePath = `cfe-receipts/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('documents')
+        .getPublicUrl(filePath)
+
+      updateAdditionalAddress(addressId, 'cfeReceiptFileUrl', publicUrl)
+    } catch (error) {
+      console.error('Error uploading file:', error)
+      alert('Error al subir el archivo')
+    }
+  }
+
+  const handleRemoveAddressFile = async (addressId: string) => {
+    const address = additionalAddresses.find(a => a.id === addressId)
+    if (!address?.cfeReceiptFileUrl) return
+
+    try {
+      const supabase = createClient()
+      const urlParts = address.cfeReceiptFileUrl.split('/')
+      const fileName = urlParts[urlParts.length - 1]
+      const filePath = `cfe-receipts/${fileName}`
+
+      await supabase.storage
+        .from('documents')
+        .remove([filePath])
+
+      updateAdditionalAddress(addressId, 'cfeReceiptFileUrl', '')
+    } catch (error) {
+      console.error('Error removing file:', error)
+    }
   }
 
   // File upload handlers
@@ -291,6 +514,7 @@ export default function NewClientPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log('Form submit started')
     setLoading(true)
 
     try {
@@ -313,6 +537,13 @@ export default function NewClientPage() {
         throw new Error('RFC inválido')
       }
 
+      // Validate additional addresses have names
+      for (const addr of additionalAddresses) {
+        if (!addr.name.trim()) {
+          throw new Error('Todas las direcciones adicionales deben tener un nombre')
+        }
+      }
+
       // Prepare data for API
       const apiData = {
         ...formData,
@@ -320,10 +551,42 @@ export default function NewClientPage() {
         postalCode: formData.zipCode,
         expectedDailyGeneration: formData.expectedDailyGeneration ? parseFloat(formData.expectedDailyGeneration) : null,
         panels: panels.filter(p => p.cantidad || p.marca || p.modelo || p.potencia),
-        inverters: inverters.filter(i => i.cantidad || i.marca || i.modelo || i.potencia)
+        inverters: inverters.filter(i => i.cantidad || i.marca || i.modelo || i.potencia),
+        // Additional addresses with their CFE and solar data
+        additionalAddresses: additionalAddresses.map(addr => ({
+          name: addr.name,
+          address: addr.street,
+          neighborhood: addr.neighborhood,
+          city: addr.city,
+          state: addr.state,
+          postalCode: addr.zipCode,
+          // CFE Data
+          cfeRpu: addr.cfeRpu,
+          cfeMeterNumber: addr.cfeMeterNumber,
+          cfeRmu: addr.cfeRmu,
+          cfeAccountNumber: addr.cfeAccountNumber,
+          cfeMeterType: addr.cfeMeterType,
+          cfeTariff: addr.cfeTariff,
+          cfePhases: addr.cfePhases,
+          cfeWires: addr.cfeWires,
+          cfeInstalledLoad: addr.cfeInstalledLoad,
+          cfeContractedDemand: addr.cfeContractedDemand,
+          cfeVoltageLevel: addr.cfeVoltageLevel,
+          cfeMediumVoltage: addr.cfeMediumVoltage,
+          cfeBranch: addr.cfeBranch,
+          cfeFolio: addr.cfeFolio,
+          cfeReceiptFileUrl: addr.cfeReceiptFileUrl,
+          // Solar System Data
+          growattUsername: addr.growattUsername,
+          growattPassword: addr.growattPassword,
+          expectedDailyGeneration: addr.expectedDailyGeneration ? parseFloat(addr.expectedDailyGeneration) : null,
+          panels: addr.panels.filter(p => p.cantidad || p.marca || p.modelo || p.potencia),
+          inverters: addr.inverters.filter(i => i.cantidad || i.marca || i.modelo || i.potencia)
+        }))
       }
 
       // Save to database via API
+      console.log('Sending API request with data:', JSON.stringify(apiData, null, 2))
       const response = await fetch('/api/clients', {
         method: 'POST',
         headers: {
@@ -332,7 +595,9 @@ export default function NewClientPage() {
         body: JSON.stringify(apiData)
       })
 
+      console.log('API response status:', response.status)
       const result = await response.json()
+      console.log('API response data:', result)
 
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Error al crear cliente')
@@ -345,10 +610,12 @@ export default function NewClientPage() {
       // Redirect back to clients list
       router.push('/clients')
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating client:', error)
+      console.error('Error details:', error?.message, error?.stack)
       alert(error instanceof Error ? error.message : 'Error al crear cliente')
     } finally {
+      console.log('Form submit finished, loading:', false)
       setLoading(false)
     }
   }
@@ -465,6 +732,40 @@ export default function NewClientPage() {
                       required
                     />
                   </div>
+
+                  {/* Credential Preview */}
+                  {(formData.phone || (formData.type === 'personal' ? formData.firstName : formData.businessName)) && (
+                    <div className="md:col-span-2 mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-sm font-medium text-blue-800 mb-3">Credenciales de Acceso al Portal (Provisionales)</p>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-blue-600 font-medium">Usuario:</span>
+                          <code className="px-2 py-1 bg-white rounded text-sm font-mono">
+                            {formData.phone.replace(/\D/g, '').slice(-10) || '0000000000'}
+                          </code>
+                          <span className="text-xs text-blue-500">(10 dígitos del teléfono)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-blue-600 font-medium">Contraseña:</span>
+                          <code className="px-2 py-1 bg-white rounded text-sm font-mono">
+                            {(() => {
+                              const name = formData.type === 'personal' ? formData.firstName : formData.businessName
+                              const cleanName = name
+                                .toLowerCase()
+                                .normalize('NFD')
+                                .replace(/[\u0300-\u036f]/g, '')
+                                .replace(/\s+/g, '')
+                                .replace(/[^a-z0-9]/g, '')
+                              return `${cleanName || 'nombre'}${new Date().getFullYear()}`
+                            })()}
+                          </code>
+                        </div>
+                      </div>
+                      <p className="text-xs text-blue-500 mt-2">
+                        El cliente deberá cambiar su contraseña en el primer inicio de sesión
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -534,7 +835,7 @@ export default function NewClientPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center">
                     <MapPin className="mr-2 h-5 w-5" />
-                    Dirección
+                    Dirección Principal
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-2">
@@ -599,6 +900,581 @@ export default function NewClientPage() {
                       disabled
                     />
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* Additional Addresses */}
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <Home className="mr-2 h-5 w-5" />
+                      Direcciones Adicionales
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={addAdditionalAddress}>
+                      <Plus className="h-4 w-4 mr-1" /> Agregar Dirección
+                    </Button>
+                  </CardTitle>
+                  <CardDescription>
+                    Agregue direcciones adicionales con sus propios datos de CFE y sistema solar
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {additionalAddresses.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+                      <Home className="mx-auto h-12 w-12 text-muted-foreground/50 mb-2" />
+                      <p>No hay direcciones adicionales</p>
+                      <p className="text-sm">Haz clic en "Agregar Dirección" para añadir una</p>
+                    </div>
+                  ) : (
+                    additionalAddresses.map((addr, index) => (
+                      <div key={addr.id} className="border rounded-lg overflow-hidden">
+                        {/* Address Header - Collapsible */}
+                        <div
+                          className="flex items-center justify-between p-4 bg-muted/50 cursor-pointer hover:bg-muted"
+                          onClick={() => toggleAddressExpanded(addr.id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            {addr.isExpanded ? (
+                              <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                            ) : (
+                              <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                            )}
+                            <div>
+                              <p className="font-medium">
+                                {addr.name || `Dirección Adicional ${index + 1}`}
+                              </p>
+                              {addr.street && (
+                                <p className="text-sm text-muted-foreground">
+                                  {addr.street}{addr.city ? `, ${addr.city}` : ''}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              removeAdditionalAddress(addr.id)
+                            }}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        {/* Address Content */}
+                        {addr.isExpanded && (
+                          <div className="p-4 space-y-6">
+                            {/* Address Basic Info */}
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <div className="md:col-span-2">
+                                <Label>Nombre de la Dirección *</Label>
+                                <Input
+                                  value={addr.name}
+                                  onChange={(e) => updateAdditionalAddress(addr.id, 'name', e.target.value)}
+                                  placeholder="Ej: Sucursal Norte, Casa de Campo, Bodega"
+                                />
+                              </div>
+                              <div>
+                                <Label>Calle y Número</Label>
+                                <Input
+                                  value={addr.street}
+                                  onChange={(e) => updateAdditionalAddress(addr.id, 'street', e.target.value)}
+                                  placeholder="Av. Principal 456"
+                                />
+                              </div>
+                              <div>
+                                <Label>Colonia</Label>
+                                <Input
+                                  value={addr.neighborhood}
+                                  onChange={(e) => updateAdditionalAddress(addr.id, 'neighborhood', e.target.value)}
+                                  placeholder="Colonia"
+                                />
+                              </div>
+                              <div>
+                                <Label>Ciudad</Label>
+                                <Input
+                                  value={addr.city}
+                                  onChange={(e) => updateAdditionalAddress(addr.id, 'city', e.target.value)}
+                                  placeholder="Ciudad"
+                                />
+                              </div>
+                              <div>
+                                <Label>Estado</Label>
+                                <Select
+                                  value={addr.state}
+                                  onValueChange={(value) => updateAdditionalAddress(addr.id, 'state', value)}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Seleccionar estado" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {MEXICAN_STATES.map((state) => (
+                                      <SelectItem key={state} value={state}>
+                                        {state}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label>Código Postal</Label>
+                                <Input
+                                  value={addr.zipCode}
+                                  onChange={(e) => updateAdditionalAddress(addr.id, 'zipCode', e.target.value)}
+                                  placeholder="00000"
+                                  maxLength={5}
+                                />
+                              </div>
+                            </div>
+
+                            {/* CFE Section - Collapsible */}
+                            <div className="border rounded-lg">
+                              <div
+                                className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50"
+                                onClick={() => toggleAddressCfe(addr.id)}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-4 w-4 text-yellow-600" />
+                                  <span className="font-medium">Datos CFE</span>
+                                  {(addr.cfeRpu || addr.cfeMeterNumber) && (
+                                    <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded">
+                                      Configurado
+                                    </span>
+                                  )}
+                                </div>
+                                {addr.showCfe ? (
+                                  <ChevronUp className="h-4 w-4" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4" />
+                                )}
+                              </div>
+
+                              {addr.showCfe && (
+                                <div className="p-4 border-t bg-yellow-50/50">
+                                  <div className="grid gap-4 md:grid-cols-3">
+                                    <div>
+                                      <Label>RPU (No. Servicio)</Label>
+                                      <Input
+                                        value={addr.cfeRpu}
+                                        onChange={(e) => updateAdditionalAddress(addr.id, 'cfeRpu', e.target.value)}
+                                        placeholder="123456789012"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>No. de Medidor</Label>
+                                      <Input
+                                        value={addr.cfeMeterNumber}
+                                        onChange={(e) => updateAdditionalAddress(addr.id, 'cfeMeterNumber', e.target.value)}
+                                        placeholder="AB12345678"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>RMU</Label>
+                                      <Input
+                                        value={addr.cfeRmu}
+                                        onChange={(e) => updateAdditionalAddress(addr.id, 'cfeRmu', e.target.value)}
+                                        placeholder="RMU"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>No. de Cuenta</Label>
+                                      <Input
+                                        value={addr.cfeAccountNumber}
+                                        onChange={(e) => updateAdditionalAddress(addr.id, 'cfeAccountNumber', e.target.value)}
+                                        placeholder="Número de cuenta"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Tipo de Medidor</Label>
+                                      <Select
+                                        value={addr.cfeMeterType}
+                                        onValueChange={(value) => updateAdditionalAddress(addr.id, 'cfeMeterType', value)}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Seleccionar tipo" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="digital">Digital</SelectItem>
+                                          <SelectItem value="analogico">Analógico</SelectItem>
+                                          <SelectItem value="bidireccional">Bidireccional</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label>Tarifa</Label>
+                                      <Select
+                                        value={addr.cfeTariff}
+                                        onValueChange={(value) => updateAdditionalAddress(addr.id, 'cfeTariff', value)}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Seleccionar tarifa" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {CFE_TARIFFS.map((tariff) => (
+                                            <SelectItem key={tariff} value={tariff}>
+                                              {tariff}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label>Fases</Label>
+                                      <Select
+                                        value={addr.cfePhases}
+                                        onValueChange={(value) => updateAdditionalAddress(addr.id, 'cfePhases', value)}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Seleccionar fases" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="1">Monofásico (1 fase)</SelectItem>
+                                          <SelectItem value="2">Bifásico (2 fases)</SelectItem>
+                                          <SelectItem value="3">Trifásico (3 fases)</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label>Hilos</Label>
+                                      <Select
+                                        value={addr.cfeWires}
+                                        onValueChange={(value) => updateAdditionalAddress(addr.id, 'cfeWires', value)}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Seleccionar hilos" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="2">2 hilos</SelectItem>
+                                          <SelectItem value="3">3 hilos</SelectItem>
+                                          <SelectItem value="4">4 hilos</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label>Carga Instalada (kW)</Label>
+                                      <Input
+                                        value={addr.cfeInstalledLoad}
+                                        onChange={(e) => updateAdditionalAddress(addr.id, 'cfeInstalledLoad', e.target.value)}
+                                        placeholder="10.5"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Demanda Contratada (kW)</Label>
+                                      <Input
+                                        value={addr.cfeContractedDemand}
+                                        onChange={(e) => updateAdditionalAddress(addr.id, 'cfeContractedDemand', e.target.value)}
+                                        placeholder="15.0"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Nivel de Tensión (V)</Label>
+                                      <Select
+                                        value={addr.cfeVoltageLevel}
+                                        onValueChange={(value) => updateAdditionalAddress(addr.id, 'cfeVoltageLevel', value)}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Seleccionar tensión" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="127">127 V</SelectItem>
+                                          <SelectItem value="220">220 V</SelectItem>
+                                          <SelectItem value="440">440 V</SelectItem>
+                                          <SelectItem value="13200">13,200 V (Media Tensión)</SelectItem>
+                                          <SelectItem value="23000">23,000 V (Media Tensión)</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="flex items-center space-x-2 pt-6">
+                                      <Checkbox
+                                        id={`cfeMediumVoltage-${addr.id}`}
+                                        checked={addr.cfeMediumVoltage}
+                                        onCheckedChange={(checked) => updateAdditionalAddress(addr.id, 'cfeMediumVoltage', checked as boolean)}
+                                      />
+                                      <Label htmlFor={`cfeMediumVoltage-${addr.id}`}>Media Tensión</Label>
+                                    </div>
+                                    <div>
+                                      <Label>Sucursal CFE</Label>
+                                      <Input
+                                        value={addr.cfeBranch}
+                                        onChange={(e) => updateAdditionalAddress(addr.id, 'cfeBranch', e.target.value)}
+                                        placeholder="Sucursal CFE"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Folio</Label>
+                                      <Input
+                                        value={addr.cfeFolio}
+                                        onChange={(e) => updateAdditionalAddress(addr.id, 'cfeFolio', e.target.value)}
+                                        placeholder="Folio del recibo"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Recibo CFE (Archivo)</Label>
+                                      {addr.cfeReceiptFileUrl ? (
+                                        <div className="flex items-center gap-2 mt-1">
+                                          <span className="text-sm text-muted-foreground truncate">Archivo subido</span>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => window.open(addr.cfeReceiptFileUrl, '_blank')}
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleRemoveAddressFile(addr.id)}
+                                          >
+                                            <X className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      ) : (
+                                        <Input
+                                          type="file"
+                                          accept="image/*,.pdf"
+                                          onChange={(e) => handleAddressFileUpload(addr.id, e)}
+                                          className="mt-1"
+                                        />
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Solar Section - Collapsible */}
+                            <div className="border rounded-lg">
+                              <div
+                                className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50"
+                                onClick={() => toggleAddressSolar(addr.id)}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Sun className="h-4 w-4 text-orange-500" />
+                                  <span className="font-medium">Sistema Solar</span>
+                                  {(addr.growattUsername || addr.panels.some(p => p.cantidad)) && (
+                                    <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">
+                                      Configurado
+                                    </span>
+                                  )}
+                                </div>
+                                {addr.showSolar ? (
+                                  <ChevronUp className="h-4 w-4" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4" />
+                                )}
+                              </div>
+
+                              {addr.showSolar && (
+                                <div className="p-4 border-t bg-orange-50/50 space-y-4">
+                                  {/* Growatt Integration */}
+                                  <div className="grid gap-4 md:grid-cols-3">
+                                    <div>
+                                      <Label>Usuario Growatt</Label>
+                                      <Input
+                                        value={addr.growattUsername}
+                                        onChange={(e) => updateAdditionalAddress(addr.id, 'growattUsername', e.target.value)}
+                                        placeholder="usuario@ejemplo.com"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Contraseña Growatt</Label>
+                                      <Input
+                                        type="password"
+                                        value={addr.growattPassword}
+                                        onChange={(e) => updateAdditionalAddress(addr.id, 'growattPassword', e.target.value)}
+                                        placeholder="Contraseña"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Generación Esperada Diaria (kWh)</Label>
+                                      <Input
+                                        type="number"
+                                        value={addr.expectedDailyGeneration}
+                                        onChange={(e) => updateAdditionalAddress(addr.id, 'expectedDailyGeneration', e.target.value)}
+                                        placeholder="25.5"
+                                        step="0.1"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Panels */}
+                                  <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <Label>Paneles</Label>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => addAddressPanelRow(addr.id)}
+                                      >
+                                        <Plus className="h-4 w-4 mr-1" /> Agregar
+                                      </Button>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-sm">
+                                        <thead>
+                                          <tr className="border-b">
+                                            <th className="text-left p-2">Cantidad</th>
+                                            <th className="text-left p-2">Marca</th>
+                                            <th className="text-left p-2">Modelo</th>
+                                            <th className="text-left p-2">Potencia (W)</th>
+                                            <th className="w-10"></th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {addr.panels.map((panel) => (
+                                            <tr key={panel.id} className="border-b">
+                                              <td className="p-2">
+                                                <Input
+                                                  type="number"
+                                                  value={panel.cantidad}
+                                                  onChange={(e) => updateAddressPanelRow(addr.id, panel.id, 'cantidad', e.target.value)}
+                                                  placeholder="0"
+                                                  className="w-20"
+                                                />
+                                              </td>
+                                              <td className="p-2">
+                                                <Input
+                                                  value={panel.marca}
+                                                  onChange={(e) => updateAddressPanelRow(addr.id, panel.id, 'marca', e.target.value)}
+                                                  placeholder="Marca"
+                                                />
+                                              </td>
+                                              <td className="p-2">
+                                                <Input
+                                                  value={panel.modelo}
+                                                  onChange={(e) => updateAddressPanelRow(addr.id, panel.id, 'modelo', e.target.value)}
+                                                  placeholder="Modelo"
+                                                />
+                                              </td>
+                                              <td className="p-2">
+                                                <Input
+                                                  type="number"
+                                                  value={panel.potencia}
+                                                  onChange={(e) => updateAddressPanelRow(addr.id, panel.id, 'potencia', e.target.value)}
+                                                  placeholder="0"
+                                                  className="w-24"
+                                                />
+                                              </td>
+                                              <td className="p-2">
+                                                <Button
+                                                  type="button"
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() => removeAddressPanelRow(addr.id, panel.id)}
+                                                  disabled={addr.panels.length === 1}
+                                                >
+                                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                                </Button>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+
+                                  {/* Inverters */}
+                                  <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <Label>Inversores</Label>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => addAddressInverterRow(addr.id)}
+                                      >
+                                        <Plus className="h-4 w-4 mr-1" /> Agregar
+                                      </Button>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-sm">
+                                        <thead>
+                                          <tr className="border-b">
+                                            <th className="text-left p-2">Cantidad</th>
+                                            <th className="text-left p-2">Marca</th>
+                                            <th className="text-left p-2">Modelo</th>
+                                            <th className="text-left p-2">Potencia (kW)</th>
+                                            <th className="w-10"></th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {addr.inverters.map((inverter) => (
+                                            <tr key={inverter.id} className="border-b">
+                                              <td className="p-2">
+                                                <Input
+                                                  type="number"
+                                                  value={inverter.cantidad}
+                                                  onChange={(e) => updateAddressInverterRow(addr.id, inverter.id, 'cantidad', e.target.value)}
+                                                  placeholder="0"
+                                                  className="w-20"
+                                                />
+                                              </td>
+                                              <td className="p-2">
+                                                <Select
+                                                  value={inverter.marca}
+                                                  onValueChange={(value) => updateAddressInverterRow(addr.id, inverter.id, 'marca', value)}
+                                                >
+                                                  <SelectTrigger>
+                                                    <SelectValue placeholder="Seleccionar" />
+                                                  </SelectTrigger>
+                                                  <SelectContent>
+                                                    {INVERTER_BRANDS.map((brand) => (
+                                                      <SelectItem key={brand} value={brand}>
+                                                        {brand}
+                                                      </SelectItem>
+                                                    ))}
+                                                  </SelectContent>
+                                                </Select>
+                                              </td>
+                                              <td className="p-2">
+                                                <Input
+                                                  value={inverter.modelo}
+                                                  onChange={(e) => updateAddressInverterRow(addr.id, inverter.id, 'modelo', e.target.value)}
+                                                  placeholder="Modelo"
+                                                />
+                                              </td>
+                                              <td className="p-2">
+                                                <Input
+                                                  type="number"
+                                                  value={inverter.potencia}
+                                                  onChange={(e) => updateAddressInverterRow(addr.id, inverter.id, 'potencia', e.target.value)}
+                                                  placeholder="0"
+                                                  step="0.1"
+                                                  className="w-24"
+                                                />
+                                              </td>
+                                              <td className="p-2">
+                                                <Button
+                                                  type="button"
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() => removeAddressInverterRow(addr.id, inverter.id)}
+                                                  disabled={addr.inverters.length === 1}
+                                                >
+                                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                                </Button>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
                 </CardContent>
               </Card>
             </div>

@@ -38,7 +38,6 @@ export async function GET(
             name: true,
             brand: true,
             model: true,
-            barcode: true,
             capacity: true,
             unitPrice: true,
             category: {

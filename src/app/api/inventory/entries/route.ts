@@ -29,10 +29,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const productId = searchParams.get('productId')
     const locationId = searchParams.get('locationId')
+    const serialNumber = searchParams.get('serialNumber')
 
     const where: any = {}
     if (productId) where.productId = productId
     if (locationId) where.locationId = locationId
+    if (serialNumber) where.serialNumber = serialNumber
 
     const inventoryItems = await prisma.inventoryItem.findMany({
       where,
@@ -43,8 +45,10 @@ export async function GET(request: NextRequest) {
             name: true,
             brand: true,
             model: true,
-            barcode: true,
             category: {
+              select: { id: true, name: true }
+            },
+            subCategory: {
               select: { id: true, name: true }
             }
           }
